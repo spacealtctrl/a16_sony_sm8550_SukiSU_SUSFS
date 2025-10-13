@@ -12,6 +12,7 @@
 
 - **SukiSU Ultra** - Advanced root solution with enhanced hiding
 - **SUSFS (ඞ)** - Sophisticated filesystem hiding 
+- **Baseband-guard Support** - Cellular modem security and privacy protection
 - **Manual Syscall Hooks** - Better detection evasion
 - **Magic Mount Support** - Systemless modifications
 - **KPM Support** - Kernel Patch Module functionality
