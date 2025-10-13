@@ -264,7 +264,8 @@ jobs:
           CONFIG_FILE="arch/arm64/configs/${{ matrix.device }}_defconfig"
           echo "CONFIG_BBG=y" >> "$CONFIG_FILE"
           
-          echo "Modifying security/Kconfig to include baseband_guard..." | tee -a ../error-log-${{ matrix.device }}.txt
+          # 对于 GitHub Actions 云编译，修改 LSM Kconfig (copied from official GKI workflow)
+          echo "修改 security/Kconfig 以包含 baseband_guard..." | tee -a ../error-log-${{ matrix.device }}.txt
           sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/landlock/landlock,baseband_guard/ } }' security/Kconfig
           
           echo "✓ Baseband-guard configuration completed" | tee -a ../error-log-${{ matrix.device }}.txt
@@ -391,6 +392,7 @@ jobs:
             echo "⚠ lz4kd patch not found for kernel ${{ env.KERNEL_VERSION }}" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
+          
       - name: Apply additional patches
         working-directory: kernel
         run: |
@@ -407,6 +409,7 @@ jobs:
             echo "ℹ SukiSU hide_stuff patch not found (optional)" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
+          
       - name: Configure kernel features
         working-directory: kernel
         run: |
@@ -466,6 +469,7 @@ jobs:
           echo "CONFIG_DEFAULT_BBR=y" >> "$DEFCONFIG"
           echo "✓ Kernel configuration completed" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
+          
       - name: Update kernel version string
         working-directory: kernel
         run: |
@@ -483,6 +487,7 @@ jobs:
             echo "✓ Kernel version string updated with: ${FEATURES}" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
+          
       - name: Configure git for clean build
         working-directory: kernel
         run: |
@@ -500,6 +505,7 @@ jobs:
             echo "ℹ Git commit not needed or failed (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
+          
       - name: Optimize ccache
         run: |
           echo "--- Ccache Optimization ---" | tee -a error-log-${{ matrix.device }}.txt
@@ -514,6 +520,7 @@ jobs:
           echo "CCACHE_HARDLINK=true" >> $GITHUB_ENV
           echo "✓ Ccache configured" | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
+          
       - name: Pre-build Setup
         run: |
           echo "--- Pre-build Setup ---" | tee -a error-log-${{ matrix.device }}.txt
@@ -524,6 +531,7 @@ jobs:
           echo "✓ tmpfs mounted and linked" | tee -a error-log-${{ matrix.device }}.txt
           df -h | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
+          
       - name: Build kernel
         working-directory: kernel
         env:
@@ -552,6 +560,7 @@ jobs:
           fi
           echo "Build completed: $(date -u)" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
+          
       - name: Verify kernel build
         run: |
           echo "--- Build Verification ---" | tee -a error-log-${{ matrix.device }}.txt
@@ -563,6 +572,7 @@ jobs:
           echo "✓ Build verified successfully:" | tee -a error-log-${{ matrix.device }}.txt
           ls -lh kernel/out/arch/arm64/boot/Image | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
+          
       - name: Apply KPM patch
         if: ${{ github.event.inputs.enable_kpm == 'true' }}
         run: |
@@ -596,6 +606,7 @@ jobs:
           fi
           cd ../../../../..
           echo "" >> error-log-${{ matrix.device }}.txt
+          
       - name: Log build configuration
         run: |
           echo "=== Build Configuration Summary ===" | tee build-info-${{ matrix.device }}.txt
@@ -645,11 +656,13 @@ jobs:
             echo "Errors: $ERRORS" >> build-info-${{ matrix.device }}.txt
           fi
           echo "===================================" >> build-info-${{ matrix.device }}.txt
+          
       - name: Save ccache stats
         if: always()
         run: |
           ccache -s
           echo "Ccache statistics saved"
+          
       - name: Package AnyKernel3
         run: |
           git clone --depth=1 https://github.com/WildPlusKernel/AnyKernel3.git -b gki-2.0 AnyKernel3-${{ matrix.device }}
@@ -665,9 +678,11 @@ jobs:
           cd AnyKernel3-${{ matrix.device }}
           zip -r9 -q "../AnyKernel3-${{ matrix.device }}-sukisu-${BRANCH_SUFFIX}.zip" * -x .git .github README.md *placeholder
           cd ..
+          
       - name: Copy kernel Image for upload
         run: |
           cp kernel/out/arch/arm64/boot/Image Image-${{ matrix.device }}
+          
       - name: Upload files
         uses: actions/upload-artifact@v4
         with:
