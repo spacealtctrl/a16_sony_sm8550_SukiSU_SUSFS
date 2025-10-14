@@ -476,6 +476,9 @@ jobs:
           echo "CONFIG_TCP_CONG_BBR=y" >> "$DEFCONFIG"
           echo "CONFIG_NET_SCH_FQ=y" >> "$DEFCONFIG"
           echo "CONFIG_DEFAULT_BBR=y" >> "$DEFCONFIG"
+          echo "CONFIG_TCP_CONG_BIC=n" >> "$DEFCONFIG"
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> "$DEFCONFIG"
+          echo "CONFIG_TCP_CONG_HTCP=n" >> "$DEFCONFIG"
           echo "✓ Kernel configuration completed" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
           
