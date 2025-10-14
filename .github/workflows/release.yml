@@ -251,25 +251,34 @@ jobs:
       - name: Add Baseband-guard support
         working-directory: kernel
         run: |
-          echo "--- Adding Baseband-guard ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "Downloading and running Baseband-guard setup script..." | tee -a ../error-log-${{ matrix.device }}.txt
+          LOG="../error-log-${{ matrix.device }}.txt"
           
-          if wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ Baseband-guard setup completed" | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "--- Adding Baseband-guard ---" | tee -a "$LOG"
+          echo "Downloading and running Baseband-guard setup script..." | tee -a "$LOG"
+
+          # Run setup.sh without --cleanup to avoid removing other LSM defaults
+          if wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash 2>&1 | tee -a "$LOG"; then
+            echo "✓ Baseband-guard setup completed" | tee -a "$LOG"
           else
-            echo "⚠ Baseband-guard setup had issues (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "⚠ Baseband-guard setup had issues (continuing)" | tee -a "$LOG"
           fi
-          
-          echo "Enabling Baseband-guard kernel configuration..." | tee -a ../error-log-${{ matrix.device }}.txt
+
+          echo "Enabling Baseband-guard kernel configuration..." | tee -a "$LOG"
           CONFIG_FILE="arch/arm64/configs/${{ matrix.device }}_defconfig"
-          echo "CONFIG_BBG=y" >> "$CONFIG_FILE"
-          
-          # 对于 GitHub Actions 云编译，修改 LSM Kconfig (copied from official GKI workflow)
-          echo "修改 security/Kconfig 以包含 baseband_guard..." | tee -a ../error-log-${{ matrix.device }}.txt
-          sed -i '/^config LSM$/,/^help$/{ /^[[:space:]]*default/ { /baseband_guard/! s/landlock/landlock,baseband_guard/ } }' security/Kconfig
-          
-          echo "✓ Baseband-guard configuration completed" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "" >> ../error-log-${{ matrix.device }}.txt
+
+          # Add CONFIG_BBG=y if not already present
+          grep -q '^CONFIG_BBG=y' "$CONFIG_FILE" || echo 'CONFIG_BBG=y' >> "$CONFIG_FILE"
+
+          # Ensure baseband_guard is included in CONFIG_LSM
+          if grep -q '^CONFIG_LSM=' "$CONFIG_FILE"; then
+              sed -i 's/^CONFIG_LSM="\([^"]*\)"/CONFIG_LSM="\1,baseband_guard"/' "$CONFIG_FILE"
+          else
+              echo 'CONFIG_LSM="baseband_guard"' >> "$CONFIG_FILE"
+          fi
+
+          echo "✓ Baseband-guard configuration completed" | tee -a "$LOG"
+          echo "" >> "$LOG"
+
 
       - name: Verify SUSFS patch files exist
         if: ${{ github.event.inputs.enable_susfs == 'true' }}
@@ -768,7 +777,7 @@ jobs:
           fi
           
           # Create release name
-          RELEASE_NAME="Multi-Device Kernel: SukiSU & SUSFS ${SUSFS_VERSION}"
+          RELEASE_NAME="pdx234 & pdx237 Kernel: SukiSU & SUSFS ${SUSFS_VERSION}"
           echo "RELEASE_NAME<<EOF" >> $GITHUB_ENV
           echo "$RELEASE_NAME" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
@@ -786,7 +795,6 @@ jobs:
           -> SUSFS ඞ ${SUSFS_VERSION}
           -> Baseband-guard Support
           -> Manual Syscall Hooks for better hiding
-          -> Magic Mount Support
           -> KALLSYMS Support
           -> Simple hiding for LineageOS detection
           -> Futile hiding for jit-zygote-cache detection
