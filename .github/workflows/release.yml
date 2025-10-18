@@ -345,24 +345,24 @@ jobs:
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
 
-      - name: Apply manual syscall hooks for SukiSU
+      - name: Apply VFS hooks for SukiSU (scope_min_manual_hooks v1.4)
         working-directory: kernel
         run: |
-          echo "--- Manual Syscall Hooks Application ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "Applying SukiSU manual syscall hooks..." | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "--- VFS Hooks Application (Minimized Scope) ---" | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "Applying scope_min_manual_hooks v1.4 for SukiSU..." | tee -a ../error-log-${{ matrix.device }}.txt
           
-          if [ ! -f "../SukiSU_patch/hooks/syscall_hooks.patch" ]; then
-            echo "✗ ERROR: SukiSU syscall hooks patch not found!" | tee -a ../error-log-${{ matrix.device }}.txt
-            echo "Available files in SukiSU_patch/hooks/:" | tee -a ../error-log-${{ matrix.device }}.txt
-            ls -la ../SukiSU_patch/hooks/ | tee -a ../error-log-${{ matrix.device }}.txt
+          if [ ! -f "../kernel_patches/next/scope_min_manual_hooks_v1.4.patch" ]; then
+            echo "✗ ERROR: scope_min_manual_hooks_v1.4.patch not found!" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "Available files in kernel_patches/next/:" | tee -a ../error-log-${{ matrix.device }}.txt
+            ls -la ../kernel_patches/next/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
             exit 1
           fi
           
-          cp ../SukiSU_patch/hooks/syscall_hooks.patch ./
-          if patch -p1 -F 3 < syscall_hooks.patch 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ SukiSU syscall hooks patch applied successfully" | tee -a ../error-log-${{ matrix.device }}.txt
+          cp ../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
+          if patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
+            echo "✓ VFS hooks (scope_min_manual_hooks v1.4) applied successfully" | tee -a ../error-log-${{ matrix.device }}.txt
           else
-            echo "⚠ SukiSU syscall hooks patch had issues (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "⚠ VFS hooks patch had issues (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
 
@@ -435,8 +435,6 @@ jobs:
           fi
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$DEFCONFIG"
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG"
-          echo "CONFIG_KALLSYMS=y" >> "$DEFCONFIG"
-          echo "CONFIG_KALLSYMS_ALL=y" >> "$DEFCONFIG"
           
           if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
             echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG"
@@ -796,9 +794,8 @@ jobs:
           Features:
           -> SukiSU-${{ github.event.inputs.sukisu_branch }}
           -> SUSFS ඞ ${SUSFS_VERSION}
+          -> VFS Hooks v1.4 (Minimized Scope Manual Hooks)
           -> Baseband-guard Support
-          -> Manual Syscall Hooks for better hiding
-          -> KALLSYMS Support
           -> Simple hiding for LineageOS detection
           -> Futile hiding for jit-zygote-cache detection
           -> BBR Support
@@ -865,4 +862,4 @@ jobs:
           echo "Release created successfully!"
           echo "URL: https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }}"
           echo "Release type: ${{ github.event.inputs.sukisu_branch == 'Dev(开发)' && 'Pre-release' || 'Latest release' }}"
-          echo "Devices included: pdx234 (Xperia 1 V), pdx237 (Xperia 5 V)" }}.txt
+          echo "Devices included: pdx234 (Xperia 1 V), pdx237 (Xperia 5 V)"
