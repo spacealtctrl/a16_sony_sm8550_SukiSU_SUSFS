@@ -11,7 +11,7 @@
 - **SUSFS (ඞ)**
 - **VFS Hooks v1.4**
 - **[Baseband-guard](https://github.com/vc-teahouse/Baseband-guard)**
-- **SUS_MAP**
+- **SUS_MAPS**
 - **KPM**
 - **BBR TCP**
 - **LZ4KD**
