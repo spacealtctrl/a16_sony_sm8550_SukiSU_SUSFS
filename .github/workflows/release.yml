@@ -402,23 +402,6 @@ jobs:
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
           
-      - name: Apply additional patches
-        working-directory: kernel
-        run: |
-          echo "--- Additional Patches ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          if [ -f "../SukiSU_patch/69_hide_stuff.patch" ]; then
-            cp ../SukiSU_patch/69_hide_stuff.patch ./
-            echo "Applying SukiSU hide_stuff patch..." | tee -a ../error-log-${{ matrix.device }}.txt
-            if patch -p1 -F 3 < 69_hide_stuff.patch 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-              echo "✓ SukiSU hide_stuff patch applied successfully" | tee -a ../error-log-${{ matrix.device }}.txt
-            else
-              echo "⚠ SukiSU hide_stuff patch had issues (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
-            fi
-          else
-            echo "ℹ SukiSU hide_stuff patch not found (optional)" | tee -a ../error-log-${{ matrix.device }}.txt
-          fi
-          echo "" >> ../error-log-${{ matrix.device }}.txt
-          
       - name: Configure kernel features
         working-directory: kernel
         run: |
@@ -445,6 +428,7 @@ jobs:
             echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$DEFCONFIG"
+            echo "CONFIG_KSU_SUSFS_SUS_MAP=n" >> ./common/arch/arm64/configs/gki_defconfig
             echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$DEFCONFIG"
