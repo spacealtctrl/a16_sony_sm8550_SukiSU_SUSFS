@@ -7,17 +7,15 @@
 - **Recovery**: [TWRP](https://xdaforums.com/t/recovery-unofficial-updated-teamwin-recovery-project-3-7-1-for-xperia-1v-03-20-2024.4662645/)
 
 ## Features
-- **SukiSU Ultra** - Advanced root solution with enhanced hiding
-- **SUSFS (ඞ)** - Sophisticated filesystem hiding 
-- **[Baseband-guard](https://github.com/vc-teahouse/Baseband-guard)** - Cellular modem security and privacy protection
-- **Manual Syscall Hooks** - Better detection evasion
-- **KPM Support** - Kernel Patch Module functionality
-- **BBR TCP** - Optimized network congestion control
-- **KALLSYMS** - Enhanced kernel debugging support
-- **LineageOS Detection Bypass** - Hide custom ROM detection
-- **JIT Zygote Cache Hiding** - Advanced process hiding
-- **LZ4KD** - Advanced ZRAM optimizations
-- **LZ4 1.10.0** - Upgraded compression algorithm
+- **SukiSU Ultra**
+- **SUSFS (ඞ)**
+- **VFS Hooks v1.4**
+- **[Baseband-guard](https://github.com/vc-teahouse/Baseband-guard)**
+- **SUS_MAP**
+- **KPM**
+- **BBR TCP**
+- **LZ4KD**
+- **LZ4 1.10.0** - Upgraded
 
 ## Installation
 1. Ensure you're running **LineageOS 23.0**
