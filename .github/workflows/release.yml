@@ -3,15 +3,6 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
-      build_mode:
-        description: 'Build mode: Release (build both + publish release) or build a single device only (no release)'
-        required: true
-        default: 'Release'
-        type: choice
-        options:
-          - Release
-          - pdx234
-          - pdx237
       sukisu_branch:
         description: 'SukiSU Branch'
         required: true
@@ -56,7 +47,7 @@ jobs:
     timeout-minutes: 120
     strategy:
       matrix:
-        device: ${{ fromJson(github.event.inputs.build_mode == 'Release' && '["pdx234", "pdx237"]' || (github.event.inputs.build_mode == 'pdx234' && '["pdx234"]' || '["pdx237"]')) }}
+        device: [pdx234, pdx237]
       fail-fast: false
     steps:
       - name: Maximize Build Space
@@ -117,6 +108,7 @@ jobs:
         run: |
           echo "Cleaning kernel build environment..." | tee -a ../error-log-${{ matrix.device }}.txt
           make mrproper 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
+          make clean 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
           echo "✓ Kernel environment cleaned" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
       - name: Cache Clang
@@ -255,7 +247,6 @@ jobs:
             echo "✓ KernelSU directory verified" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
-
       - name: Add Baseband-guard support
         working-directory: kernel
         run: |
@@ -263,39 +254,24 @@ jobs:
           
           echo "--- Adding Baseband-guard ---" | tee -a "$LOG"
           echo "Downloading and running Baseband-guard setup script..." | tee -a "$LOG"
-
           # Run setup.sh without --cleanup to avoid removing other LSM defaults
           if wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash 2>&1 | tee -a "$LOG"; then
             echo "✓ Baseband-guard setup completed" | tee -a "$LOG"
           else
             echo "⚠ Baseband-guard setup had issues (continuing)" | tee -a "$LOG"
           fi
-
           echo "Enabling Baseband-guard kernel configuration..." | tee -a "$LOG"
           CONFIG_FILE="arch/arm64/configs/${{ matrix.device }}_defconfig"
-
           # Add CONFIG_BBG=y if not already present
-          grep -qFx 'CONFIG_BBG=y' "$CONFIG_FILE" || echo 'CONFIG_BBG=y' >> "$CONFIG_FILE"
-
+          grep -q '^CONFIG_BBG=y' "$CONFIG_FILE" || echo 'CONFIG_BBG=y' >> "$CONFIG_FILE"
           # Ensure baseband_guard is included in CONFIG_LSM
           if grep -q '^CONFIG_LSM=' "$CONFIG_FILE"; then
-              if ! grep -q 'baseband_guard' "$CONFIG_FILE"; then
-                echo "Adding baseband_guard to CONFIG_LSM" | tee -a "$LOG"
-                # Append baseband_guard to the existing LSM list
-                sed -i 's/^CONFIG_LSM="\([^"]*\)"/CONFIG_LSM="\1,baseband_guard"/' "$CONFIG_FILE"
-              else
-                echo "✓ Baseband-guard already in CONFIG_LSM" | tee -a "$LOG"
-              fi
+              sed -i 's/^CONFIG_LSM="\([^"]*\)"/CONFIG_LSM="\1,baseband_guard"/' "$CONFIG_FILE"
           else
-              # CONFIG_LSM is not set at all, so add it
-              echo "Setting new CONFIG_LSM with baseband_guard" | tee -a "$LOG"
               echo 'CONFIG_LSM="baseband_guard"' >> "$CONFIG_FILE"
           fi
-
           echo "✓ Baseband-guard configuration completed" | tee -a "$LOG"
           echo "" >> "$LOG"
-
-
       - name: Verify SUSFS patch files exist
         if: ${{ github.event.inputs.enable_susfs == 'true' }}
         run: |
@@ -326,7 +302,6 @@ jobs:
             echo "✓ Found SUSFS include directory" | tee -a error-log-${{ matrix.device }}.txt
           fi
           echo "" >> error-log-${{ matrix.device }}.txt
-
       - name: Apply SUSFS patches for SukiSU
         if: ${{ github.event.inputs.enable_susfs == 'true' }}
         working-directory: kernel
@@ -360,7 +335,6 @@ jobs:
             echo "⚠ Main SUSFS patch had issues (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
-
       - name: Apply VFS hooks for SukiSU (scope_min_manual_hooks v1.4)
         working-directory: kernel
         run: |
@@ -381,7 +355,6 @@ jobs:
             echo "⚠ VFS hooks patch had issues (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
-
       - name: Apply ZRAM optimizations (LZ4KD)
         if: ${{ github.event.inputs.enable_zram == 'true' }}
         working-directory: kernel
@@ -444,7 +417,7 @@ jobs:
             echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> "$DEFCONFIG"
+            echo "CONFIG_KSU_SUSFS_SUS_MAP=n" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> "$DEFCONFIG"
@@ -621,7 +594,6 @@ jobs:
         run: |
           echo "=== Build Configuration Summary ===" | tee build-info-${{ matrix.device }}.txt
           echo "Device: ${{ matrix.device }}" | tee -a build-info-${{ matrix.device }}.txt
-          echo "Build Mode: ${{ github.event.inputs.build_mode }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "SukiSU Branch: ${{ github.event.inputs.sukisu_branch }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "SUSFS Enabled: ${{ github.event.inputs.enable_susfs }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "KPM Enabled: ${{ github.event.inputs.enable_kpm }}" | tee -a build-info-${{ matrix.device }}.txt
@@ -708,9 +680,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     needs: build
-    # --- THIS IS THE NEW CONDITION ---
-    if: ${{ success() && github.event.inputs.build_mode == 'Release' }}
-    # -------------------------------
+    if: success()
     permissions:
       contents: write
     steps:
@@ -764,7 +734,6 @@ jobs:
           cd release-assets
           sha256sum * > SHA256SUMS.txt
           cd ..
-
       - name: Generate release tag and notes
         id: release_info
         run: |
@@ -797,10 +766,9 @@ jobs:
           Features:
           -> SukiSU-${{ github.event.inputs.sukisu_branch }}
           -> SUSFS ඞ ${SUSFS_VERSION}
-          -> SUSFS Map Spoofing (SUS_MAP)
           -> VFS Hooks v1.4 (Minimized Scope Manual Hooks)
+          -> SUS_MAPS
           -> Baseband-guard Support
-          -> SUS_MAPS Support
           -> BBR Support
           -> KPM ${{ github.event.inputs.enable_kpm == 'true' && 'Support' || 'not supported' }}
           -> LZ4KD ${{ github.event.inputs.enable_zram == 'true' && 'supported' || 'not supported' }}
@@ -864,5 +832,5 @@ jobs:
         run: |
           echo "Release created successfully!"
           echo "URL: https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }}"
-          echo "Release type: ${{ github.event.inputs.sukisu_branch == 'Dev(Top)' && 'Pre-release' || 'Latest release' }}"
+          echo "Release type: ${{ github.event.inputs.sukisu_branch == 'Dev(开发)' && 'Pre-release' || 'Latest release' }}"
           echo "Devices included: pdx234 (Xperia 1 V), pdx237 (Xperia 5 V)"
