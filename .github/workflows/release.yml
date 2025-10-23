@@ -800,7 +800,7 @@ jobs:
           -> SUSFS Map Spoofing (SUS_MAP)
           -> VFS Hooks v1.4 (Minimized Scope Manual Hooks)
           -> Baseband-guard Support
-          -> SUS_MAP Support
+          -> SUS_MAPS Support
           -> BBR Support
           -> KPM ${{ github.event.inputs.enable_kpm == 'true' && 'Support' || 'not supported' }}
           -> LZ4KD ${{ github.event.inputs.enable_zram == 'true' && 'supported' || 'not supported' }}
