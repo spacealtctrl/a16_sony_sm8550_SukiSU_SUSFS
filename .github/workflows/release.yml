@@ -3,6 +3,15 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      build_mode:
+        description: 'Build mode: Release (build both + publish release) or build a single device only (no release)'
+        required: true
+        default: 'Release'
+        type: choice
+        options:
+          - Release
+          - pdx234
+          - pdx237
       sukisu_branch:
         description: 'SukiSU Branch'
         required: true
@@ -47,7 +56,7 @@ jobs:
     timeout-minutes: 120
     strategy:
       matrix:
-        device: [pdx234, pdx237]
+        device: ${{ fromJson(github.event.inputs.build_mode == 'Release' && '["pdx234", "pdx237"]' || (github.event.inputs.build_mode == 'pdx234' && '["pdx234"]' || '["pdx237"]')) }}
       fail-fast: false
     steps:
       - name: Maximize Build Space
@@ -108,7 +117,6 @@ jobs:
         run: |
           echo "Cleaning kernel build environment..." | tee -a ../error-log-${{ matrix.device }}.txt
           make mrproper 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
-          make clean 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
           echo "✓ Kernel environment cleaned" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
       - name: Cache Clang
@@ -267,12 +275,20 @@ jobs:
           CONFIG_FILE="arch/arm64/configs/${{ matrix.device }}_defconfig"
 
           # Add CONFIG_BBG=y if not already present
-          grep -q '^CONFIG_BBG=y' "$CONFIG_FILE" || echo 'CONFIG_BBG=y' >> "$CONFIG_FILE"
+          grep -qFx 'CONFIG_BBG=y' "$CONFIG_FILE" || echo 'CONFIG_BBG=y' >> "$CONFIG_FILE"
 
           # Ensure baseband_guard is included in CONFIG_LSM
           if grep -q '^CONFIG_LSM=' "$CONFIG_FILE"; then
-              sed -i 's/^CONFIG_LSM="\([^"]*\)"/CONFIG_LSM="\1,baseband_guard"/' "$CONFIG_FILE"
+              if ! grep -q 'baseband_guard' "$CONFIG_FILE"; then
+                echo "Adding baseband_guard to CONFIG_LSM" | tee -a "$LOG"
+                # Append baseband_guard to the existing LSM list
+                sed -i 's/^CONFIG_LSM="\([^"]*\)"/CONFIG_LSM="\1,baseband_guard"/' "$CONFIG_FILE"
+              else
+                echo "✓ Baseband-guard already in CONFIG_LSM" | tee -a "$LOG"
+              fi
           else
+              # CONFIG_LSM is not set at all, so add it
+              echo "Setting new CONFIG_LSM with baseband_guard" | tee -a "$LOG"
               echo 'CONFIG_LSM="baseband_guard"' >> "$CONFIG_FILE"
           fi
 
@@ -605,6 +621,7 @@ jobs:
         run: |
           echo "=== Build Configuration Summary ===" | tee build-info-${{ matrix.device }}.txt
           echo "Device: ${{ matrix.device }}" | tee -a build-info-${{ matrix.device }}.txt
+          echo "Build Mode: ${{ github.event.inputs.build_mode }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "SukiSU Branch: ${{ github.event.inputs.sukisu_branch }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "SUSFS Enabled: ${{ github.event.inputs.enable_susfs }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "KPM Enabled: ${{ github.event.inputs.enable_kpm }}" | tee -a build-info-${{ matrix.device }}.txt
@@ -691,7 +708,9 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     needs: build
-    if: success()
+    # --- THIS IS THE NEW CONDITION ---
+    if: ${{ success() && github.event.inputs.build_mode == 'Release' }}
+    # -------------------------------
     permissions:
       contents: write
     steps:
@@ -778,9 +797,10 @@ jobs:
           Features:
           -> SukiSU-${{ github.event.inputs.sukisu_branch }}
           -> SUSFS ඞ ${SUSFS_VERSION}
+          -> SUSFS Map Spoofing (SUS_MAP)
           -> VFS Hooks v1.4 (Minimized Scope Manual Hooks)
           -> Baseband-guard Support
-          -> SUS_MAP Supported
+          -> SUS_MAP Support
           -> BBR Support
           -> KPM ${{ github.event.inputs.enable_kpm == 'true' && 'Support' || 'not supported' }}
           -> LZ4KD ${{ github.event.inputs.enable_zram == 'true' && 'supported' || 'not supported' }}
@@ -844,5 +864,5 @@ jobs:
         run: |
           echo "Release created successfully!"
           echo "URL: https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }}"
-          echo "Release type: ${{ github.event.inputs.sukisu_branch == 'Dev(开发)' && 'Pre-release' || 'Latest release' }}"
+          echo "Release type: ${{ github.event.inputs.sukisu_branch == 'Dev(Top)' && 'Pre-release' || 'Latest release' }}"
           echo "Devices included: pdx234 (Xperia 1 V), pdx237 (Xperia 5 V)"
