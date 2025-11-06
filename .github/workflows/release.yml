@@ -1,4 +1,4 @@
-name: Release
+name: Release TEST
 
 on:
   workflow_dispatch:
@@ -156,10 +156,20 @@ jobs:
           
           git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           git clone --depth=1 https://github.com/WildPlusKernel/kernel_patches.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
-          git clone --depth=1 https://github.com/ShirkNeko/SukiSU_patch.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
+          git clone --depth=1 https://github.com/SukiSU-Ultra/SukiSU_patch.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           git clone --depth=1 https://github.com/zzh20188/GKI_KernelSU_SUSFS.git zzh_patches 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           wait
           echo "✓ Dependencies cloned successfully" | tee -a error-log-${{ matrix.device }}.txt
+          
+          # Verify SukiSU_patch was cloned
+          if [ -d "SukiSU_patch" ]; then
+            echo "✓ SukiSU_patch repository verified" | tee -a error-log-${{ matrix.device }}.txt
+            ls -la SukiSU_patch/ | tee -a error-log-${{ matrix.device }}.txt
+          else
+            echo "✗ ERROR: SukiSU_patch repository not found!" | tee -a error-log-${{ matrix.device }}.txt
+            exit 1
+          fi
+          
           echo "" >> error-log-${{ matrix.device }}.txt
       - name: Clone additional repositories for LZ4 upgrade
         run: |
@@ -335,22 +345,22 @@ jobs:
             echo "⚠ Main SUSFS patch had issues (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
-      - name: Apply VFS hooks for SukiSU (scope_min_manual_hooks v1.4)
+      - name: Apply VFS hooks for SukiSU (scope_min_manual_hooks v1.6)
         working-directory: kernel
         run: |
           echo "--- VFS Hooks Application (Minimized Scope) ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "Applying scope_min_manual_hooks v1.4 for SukiSU..." | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "Applying scope_min_manual_hooks v1.6 for SukiSU..." | tee -a ../error-log-${{ matrix.device }}.txt
           
-          if [ ! -f "../kernel_patches/next/scope_min_manual_hooks_v1.4.patch" ]; then
-            echo "✗ ERROR: scope_min_manual_hooks_v1.4.patch not found!" | tee -a ../error-log-${{ matrix.device }}.txt
-            echo "Available files in kernel_patches/next/:" | tee -a ../error-log-${{ matrix.device }}.txt
-            ls -la ../kernel_patches/next/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
+          if [ ! -f "../SukiSU_patch/hooks/scope_min_manual_hooks_v1.6.patch" ]; then
+            echo "✗ ERROR: scope_min_manual_hooks_v1.6.patch not found!" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "Available files in SukiSU_patch/hooks/:" | tee -a ../error-log-${{ matrix.device }}.txt
+            ls -la ../SukiSU_patch/hooks/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
             exit 1
           fi
           
-          cp ../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./
-          if patch -p1 -F 3 < scope_min_manual_hooks_v1.4.patch 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ VFS hooks (scope_min_manual_hooks v1.4) applied successfully" | tee -a ../error-log-${{ matrix.device }}.txt
+          cp ../SukiSU_patch/hooks/scope_min_manual_hooks_v1.6.patch ./
+          if patch -p1 -F 3 < scope_min_manual_hooks_v1.6.patch 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
+            echo "✓ VFS hooks (scope_min_manual_hooks v1.6) applied successfully" | tee -a ../error-log-${{ matrix.device }}.txt
           else
             echo "⚠ VFS hooks patch had issues (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
@@ -563,7 +573,7 @@ jobs:
           echo "Applying KPM patch to kernel Image..." | tee -a error-log-${{ matrix.device }}.txt
           cd kernel/out/arch/arm64/boot/
           
-          if curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch 2>&1 | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt; then
+          if curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch 2>&1 | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt; then
             echo "✓ KPM patch downloaded" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
           else
             echo "✗ ERROR: Failed to download KPM patch" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
@@ -766,7 +776,7 @@ jobs:
           Features:
           -> SukiSU-${{ github.event.inputs.sukisu_branch }}
           -> SUSFS ඞ ${SUSFS_VERSION}
-          -> VFS Hooks v1.4 (Minimized Scope Manual Hooks)
+          -> VFS Hooks v1.6 (Minimized Scope Manual Hooks)
           -> SUS_MAPS
           -> Baseband-guard Support
           -> BBR Support
