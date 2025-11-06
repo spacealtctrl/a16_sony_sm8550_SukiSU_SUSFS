@@ -8,8 +8,8 @@
 
 ## Features
 - **SukiSU Ultra**
-- **SUSFS (ඞ)**
-- **VFS Hooks v1.4**
+- **SUSFS (ඞ) 1.5.12**
+- **VFS Hooks v1.6**
 - **[Baseband-guard](https://github.com/vc-teahouse/Baseband-guard)**
 - **SUS_MAPS**
 - **KPM**
