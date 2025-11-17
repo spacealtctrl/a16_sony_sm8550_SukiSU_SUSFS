@@ -29,7 +29,7 @@ on:
       release_version:
         description: 'Release Version'
         required: true
-        default: 'v1.5.12-r1'
+        default: 'v2.0.0-r1'
         type: string
 
 env:
