@@ -156,7 +156,7 @@ jobs:
           
           git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           git clone --depth=1 https://github.com/WildPlusKernel/kernel_patches.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
-          git clone --depth=1 https://github.com/SukiSU-Ultra/SukiSU_patch.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
+          git clone --depth=1 https://github.com/ShirkNeko/SukiSU_patch.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           git clone --depth=1 https://github.com/zzh20188/GKI_KernelSU_SUSFS.git zzh_patches 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           wait
           echo "✓ Dependencies cloned successfully" | tee -a error-log-${{ matrix.device }}.txt
@@ -573,7 +573,7 @@ jobs:
           echo "Applying KPM patch to kernel Image..." | tee -a error-log-${{ matrix.device }}.txt
           cd kernel/out/arch/arm64/boot/
           
-          if curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch 2>&1 | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt; then
+          if curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/ShirkNeko/refs/heads/main/kpm/patch_linux" -o patch 2>&1 | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt; then
             echo "✓ KPM patch downloaded" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
           else
             echo "✗ ERROR: Failed to download KPM patch" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
