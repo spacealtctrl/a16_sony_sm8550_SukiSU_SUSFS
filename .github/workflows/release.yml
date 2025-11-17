@@ -1,4 +1,4 @@
-name: Release TEST
+name: Release
 
 on:
   workflow_dispatch:
@@ -89,12 +89,14 @@ jobs:
           echo 'Acquire::http::Pipeline-Depth "5";' | sudo tee -a /etc/apt/apt.conf.d/99parallel
           sudo apt update -qq
           sudo apt install -y ${{ env.PACKAGES }} -qq
+
       - name: Initialize error log
         run: |
           echo "=== Build Process Error and Warning Log ===" > error-log-${{ matrix.device }}.txt
           echo "Build started: $(date -u)" >> error-log-${{ matrix.device }}.txt
           echo "Device: ${{ matrix.device }}" >> error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
+
       - name: Sync kernel repository
         uses: actions/checkout@v4
         with:
@@ -111,6 +113,7 @@ jobs:
           make clean 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
           echo "✓ Kernel environment cleaned" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
+
       - name: Cache Clang
         id: cache-clang
         uses: actions/cache@v4
@@ -127,6 +130,7 @@ jobs:
           tar xz -C clang
           echo "✓ Clang downloaded and extracted" | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
+
       - name: Cache ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -145,6 +149,7 @@ jobs:
           sudo swapon -s
           echo "✓ Swap configured" | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
+
       - name: Clone SukiSU and SUSFS dependencies
         run: |
           echo "--- Cloning Dependencies ---" | tee -a error-log-${{ matrix.device }}.txt
@@ -171,6 +176,7 @@ jobs:
           fi
           
           echo "" >> error-log-${{ matrix.device }}.txt
+
       - name: Clone additional repositories for LZ4 upgrade
         run: |
           echo "Verifying LZ4 patches repository..." | tee -a error-log-${{ matrix.device }}.txt
@@ -181,6 +187,7 @@ jobs:
             exit 1
           fi
           echo "" >> error-log-${{ matrix.device }}.txt
+
       - name: Upgrade LZ4 to version 1.10.0
         if: ${{ github.event.inputs.enable_zram == 'true' }}
         working-directory: kernel
@@ -226,6 +233,7 @@ jobs:
               fi
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
+
       - name: Add SukiSU
         working-directory: kernel
         run: |
@@ -257,6 +265,7 @@ jobs:
             echo "✓ KernelSU directory verified" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
+
       - name: Add Baseband-guard support
         working-directory: kernel
         run: |
@@ -264,24 +273,73 @@ jobs:
           
           echo "--- Adding Baseband-guard ---" | tee -a "$LOG"
           echo "Downloading and running Baseband-guard setup script..." | tee -a "$LOG"
-          # Run setup.sh without --cleanup to avoid removing other LSM defaults
+          
+          # Run setup.sh
           if wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash 2>&1 | tee -a "$LOG"; then
-            echo "✓ Baseband-guard setup completed" | tee -a "$LOG"
+            echo "✓ Baseband-guard setup script completed" | tee -a "$LOG"
           else
             echo "⚠ Baseband-guard setup had issues (continuing)" | tee -a "$LOG"
           fi
+          
           echo "Enabling Baseband-guard kernel configuration..." | tee -a "$LOG"
           CONFIG_FILE="arch/arm64/configs/${{ matrix.device }}_defconfig"
+          
           # Add CONFIG_BBG=y if not already present
-          grep -q '^CONFIG_BBG=y' "$CONFIG_FILE" || echo 'CONFIG_BBG=y' >> "$CONFIG_FILE"
-          # Ensure baseband_guard is included in CONFIG_LSM
-          if grep -q '^CONFIG_LSM=' "$CONFIG_FILE"; then
-              sed -i 's/^CONFIG_LSM="\([^"]*\)"/CONFIG_LSM="\1,baseband_guard"/' "$CONFIG_FILE"
+          if grep -q '^CONFIG_BBG=y' "$CONFIG_FILE"; then
+            echo "ℹ CONFIG_BBG=y already present" | tee -a "$LOG"
           else
-              echo 'CONFIG_LSM="baseband_guard"' >> "$CONFIG_FILE"
+            echo 'CONFIG_BBG=y' >> "$CONFIG_FILE"
+            echo "✓ Added CONFIG_BBG=y to defconfig" | tee -a "$LOG"
           fi
+          
+          # Verify baseband_guard directory and symlink (note: symlink is "baseband-guard" with hyphen!)
+          echo "Verifying Baseband-guard installation..." | tee -a "$LOG"
+          if [ -d "Baseband-guard" ]; then
+            echo "✓ Baseband-guard directory found" | tee -a "$LOG"
+          else
+            echo "✗ ERROR: Baseband-guard directory not found" | tee -a "$LOG"
+            exit 1
+          fi
+          
+          if [ -L "security/baseband-guard" ]; then
+            echo "✓ Baseband-guard symlink found in security/" | tee -a "$LOG"
+          else
+            echo "✗ ERROR: baseband-guard symlink not found in security/" | tee -a "$LOG"
+            exit 1
+          fi
+          
+          # Verify Makefile was updated
+          if grep -q "baseband-guard" security/Makefile; then
+            echo "✓ Baseband-guard found in security/Makefile" | tee -a "$LOG"
+          else
+            echo "✗ ERROR: baseband-guard not in security/Makefile" | tee -a "$LOG"
+            exit 1
+          fi
+          
+          # Verify Kconfig was updated
+          if grep -q "baseband-guard/Kconfig" security/Kconfig; then
+            echo "✓ Baseband-guard found in security/Kconfig" | tee -a "$LOG"
+          else
+            echo "✗ ERROR: baseband-guard not in security/Kconfig" | tee -a "$LOG"
+            exit 1
+          fi
+          
+          # Add LSM configuration to defconfig
+          echo "Adding LSM configuration to defconfig..." | tee -a "$LOG"
+          if grep -q "CONFIG_DEFAULT_SECURITY_SELINUX=y" "$CONFIG_FILE"; then
+            echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> "$CONFIG_FILE"
+            echo "✓ Added LSM config with SELinux default" | tee -a "$LOG"
+          elif grep -q "CONFIG_DEFAULT_SECURITY_APPARMOR=y" "$CONFIG_FILE"; then
+            echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,apparmor,selinux,smack,tomoyo,bpf,baseband_guard"' >> "$CONFIG_FILE"
+            echo "✓ Added LSM config with AppArmor default" | tee -a "$LOG"
+          else
+            echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> "$CONFIG_FILE"
+            echo "✓ Added default LSM config" | tee -a "$LOG"
+          fi
+          
           echo "✓ Baseband-guard configuration completed" | tee -a "$LOG"
           echo "" >> "$LOG"
+
       - name: Verify SUSFS patch files exist
         if: ${{ github.event.inputs.enable_susfs == 'true' }}
         run: |
@@ -312,6 +370,7 @@ jobs:
             echo "✓ Found SUSFS include directory" | tee -a error-log-${{ matrix.device }}.txt
           fi
           echo "" >> error-log-${{ matrix.device }}.txt
+
       - name: Apply SUSFS patches for SukiSU
         if: ${{ github.event.inputs.enable_susfs == 'true' }}
         working-directory: kernel
@@ -345,26 +404,7 @@ jobs:
             echo "⚠ Main SUSFS patch had issues (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
-      - name: Apply VFS hooks for SukiSU (scope_min_manual_hooks v1.6)
-        working-directory: kernel
-        run: |
-          echo "--- VFS Hooks Application (Minimized Scope) ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "Applying scope_min_manual_hooks v1.6 for SukiSU..." | tee -a ../error-log-${{ matrix.device }}.txt
-          
-          if [ ! -f "../SukiSU_patch/hooks/scope_min_manual_hooks_v1.6.patch" ]; then
-            echo "✗ ERROR: scope_min_manual_hooks_v1.6.patch not found!" | tee -a ../error-log-${{ matrix.device }}.txt
-            echo "Available files in SukiSU_patch/hooks/:" | tee -a ../error-log-${{ matrix.device }}.txt
-            ls -la ../SukiSU_patch/hooks/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
-            exit 1
-          fi
-          
-          cp ../SukiSU_patch/hooks/scope_min_manual_hooks_v1.6.patch ./
-          if patch -p1 -F 3 < scope_min_manual_hooks_v1.6.patch 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ VFS hooks (scope_min_manual_hooks v1.6) applied successfully" | tee -a ../error-log-${{ matrix.device }}.txt
-          else
-            echo "⚠ VFS hooks patch had issues (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
-          fi
-          echo "" >> ../error-log-${{ matrix.device }}.txt
+
       - name: Apply ZRAM optimizations (LZ4KD)
         if: ${{ github.event.inputs.enable_zram == 'true' }}
         working-directory: kernel
@@ -415,8 +455,9 @@ jobs:
           if [ "${{ github.event.inputs.enable_kpm }}" == "true" ]; then
             echo "CONFIG_KPM=y" >> "$DEFCONFIG"
           fi
-          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$DEFCONFIG"
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG"
+          echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$DEFCONFIG"
+
           
           if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
             echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG"
@@ -573,7 +614,7 @@ jobs:
           echo "Applying KPM patch to kernel Image..." | tee -a error-log-${{ matrix.device }}.txt
           cd kernel/out/arch/arm64/boot/
           
-          if curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/ShirkNeko/refs/heads/main/kpm/patch_linux" -o patch 2>&1 | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt; then
+          if curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch 2>&1 | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt; then
             echo "✓ KPM patch downloaded" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
           else
             echo "✗ ERROR: Failed to download KPM patch" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
@@ -744,6 +785,7 @@ jobs:
           cd release-assets
           sha256sum * > SHA256SUMS.txt
           cd ..
+
       - name: Generate release tag and notes
         id: release_info
         run: |
@@ -776,7 +818,6 @@ jobs:
           Features:
           -> SukiSU-${{ github.event.inputs.sukisu_branch }}
           -> SUSFS ඞ ${SUSFS_VERSION}
-          -> VFS Hooks v1.6 (Minimized Scope Manual Hooks)
           -> SUS_MAPS
           -> Baseband-guard Support
           -> BBR Support
@@ -822,12 +863,14 @@ jobs:
           
           </details>
           EOF
+
       - name: Install GitHub CLI
         run: |
           type -p gh >/dev/null || {
             sudo apt update
             sudo apt install -y gh
           }
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -838,6 +881,7 @@ jobs:
             --notes-file release-notes.md \
             ${{ github.event.inputs.sukisu_branch == 'Dev(开发)' && '--prerelease' || '' }} \
             release-assets/*
+
       - name: Output release URL
         run: |
           echo "Release created successfully!"
