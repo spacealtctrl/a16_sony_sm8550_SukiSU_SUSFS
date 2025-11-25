@@ -36,7 +36,7 @@ env:
   AOSP_TOOLCHAIN_BRANCH: android16
   AOSP_CLANG_VERSION: r522817
   KERNEL_LOCALVERSION: spacealtctrl-sukisu
-  ANDROID_VERSION: android14
+  ANDROID_VERSION: android13
   KERNEL_VERSION: 5.15
 
 jobs:
@@ -159,7 +159,7 @@ jobs:
           SUSFS_BRANCH="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
           echo "Using SUSFS branch: $SUSFS_BRANCH" | tee -a error-log-${{ matrix.device }}.txt
           
-          git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
+          git clone --depth=1 https://github.com/ShirkNeko/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           git clone --depth=1 https://github.com/WildPlusKernel/kernel_patches.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           git clone --depth=1 https://github.com/ShirkNeko/SukiSU_patch.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           git clone --depth=1 https://github.com/zzh20188/GKI_KernelSU_SUSFS.git zzh_patches 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
@@ -405,6 +405,28 @@ jobs:
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
 
+      - name: Apply task_mmu.c fix for android13-5.15
+        working-directory: kernel
+        run: |
+          echo "--- Applying task_mmu.c Fix ---" | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "Applying task_mmu.c fix for android13-5.15..." | tee -a ../error-log-${{ matrix.device }}.txt
+          
+          # Check if the fix is needed
+          if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
+            echo "⚠ vma_pages check not found, applying fix..." | tee -a ../error-log-${{ matrix.device }}.txt
+            
+            # Apply the fix if needed
+            if grep -qxF $'\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
+              sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
+              echo "✓ Applied task_mmu.c fix (replaced 'goto show_pad' with 'return 0')" | tee -a ../error-log-${{ matrix.device }}.txt
+            else
+              echo "ℹ task_mmu.c doesn't need fixing" | tee -a ../error-log-${{ matrix.device }}.txt
+            fi
+          else
+            echo "✓ task_mmu.c already has correct vma_pages check" | tee -a ../error-log-${{ matrix.device }}.txt
+          fi
+          echo "" >> ../error-log-${{ matrix.device }}.txt
+
       - name: Apply ZRAM optimizations (LZ4KD)
         if: ${{ github.event.inputs.enable_zram == 'true' }}
         working-directory: kernel
@@ -455,7 +477,6 @@ jobs:
           if [ "${{ github.event.inputs.enable_kpm }}" == "true" ]; then
             echo "CONFIG_KPM=y" >> "$DEFCONFIG"
           fi
-          echo "CONFIG_KSU_MANUAL_HOOK=y" >> "$DEFCONFIG"
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$DEFCONFIG"
 
           
@@ -600,7 +621,7 @@ jobs:
           echo "--- Build Verification ---" | tee -a error-log-${{ matrix.device }}.txt
           echo "Verifying kernel build..."
           if [ ! -f "kernel/out/arch/arm64/boot/Image" ]; then
-          echo "✗ ERROR: Kernel Image not found! Build failed." | tee -a error-log-${{ matrix.device }}.txt
+            echo "✗ ERROR: Kernel Image not found! Build failed." | tee -a error-log-${{ matrix.device }}.txt
             exit 1
           fi
           echo "✓ Build verified successfully:" | tee -a error-log-${{ matrix.device }}.txt
@@ -818,6 +839,7 @@ jobs:
           Features:
           -> SukiSU-${{ github.event.inputs.sukisu_branch }}
           -> SUSFS ඞ ${SUSFS_VERSION}
+          -> Inline Hook
           -> SUS_MAPS
           -> Baseband-guard Support
           -> BBR Support
@@ -829,7 +851,7 @@ jobs:
           <summary>▸ Notes:</summary>
           
           - Device specific builds for Sony Xperia with SM8550
-          - Based on LineageOS 23.0 kernel source
+          - Based on LineageOS 23.0 kernel source (Android 13 base)
           - In the latest version of susfs, flashing AK3 with Kernel Flasher may brick your device, try [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher)
           - Flash the AnyKernel3 zip that matches your device model
           
@@ -854,7 +876,7 @@ jobs:
           - **SukiSU Branch**: ${{ github.event.inputs.sukisu_branch == 'Stable(标准)' && 'susfs-main' || 'susfs-test' }}
           - **Devices**: Sony Xperia 1 V (pdx234), Sony Xperia 5 V (pdx237)
           - **Base Kernel**: 5.15
-          - **Android Version**: 16
+          - **Android Version**: 13 (LineageOS 23.0)
           - **LineageOS Base**: 23.0
           - **Clang Version**: ${{ env.AOSP_CLANG_VERSION }}
           - **Release Version**: ${{ github.event.inputs.release_version }}
