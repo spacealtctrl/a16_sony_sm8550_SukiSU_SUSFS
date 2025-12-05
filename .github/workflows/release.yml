@@ -240,16 +240,9 @@ jobs:
           echo "--- Adding SukiSU ---" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "Adding SukiSU to kernel..." | tee -a ../error-log-${{ matrix.device }}.txt
           
-          if [ "${{ github.event.inputs.sukisu_branch }}" == "Stable(标准)" ]; then
-            echo "Using SukiSU Stable branch (susfs-main)" | tee -a ../error-log-${{ matrix.device }}.txt
-            BRANCH="-s susfs-main"
-          elif [ "${{ github.event.inputs.sukisu_branch }}" == "Dev(开发)" ]; then
-            echo "Using SukiSU Dev branch (susfs-test)" | tee -a ../error-log-${{ matrix.device }}.txt
-            BRANCH="-s susfs-test"
-          else
-            echo "⚠ Invalid branch selection, defaulting to stable" | tee -a ../error-log-${{ matrix.device }}.txt
-            BRANCH="-s susfs-main"
-          fi
+          # Both Stable and Dev now use builtin branch
+          echo "Using SukiSU builtin branch" | tee -a ../error-log-${{ matrix.device }}.txt
+          BRANCH="-s builtin"
           
           if curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash $BRANCH 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
             echo "✓ SukiSU setup completed" | tee -a ../error-log-${{ matrix.device }}.txt
@@ -837,7 +830,7 @@ jobs:
           - **pdx237** - Sony Xperia 5 V
           
           Features:
-          -> SukiSU-${{ github.event.inputs.sukisu_branch }}
+          -> SukiSU-${{ github.event.inputs.sukisu_branch }} (builtin)
           -> SUSFS ඞ ${SUSFS_VERSION}
           -> Inline Hook
           -> SUS_MAPS
@@ -873,7 +866,7 @@ jobs:
           <summary>▸ Commit Information</summary>
           
           Build compiled with:
-          - **SukiSU Branch**: ${{ github.event.inputs.sukisu_branch == 'Stable(标准)' && 'susfs-main' || 'susfs-test' }}
+          - **SukiSU Branch**: builtin
           - **Devices**: Sony Xperia 1 V (pdx234), Sony Xperia 5 V (pdx237)
           - **Base Kernel**: 5.15
           - **Android Version**: 13 (LineageOS 23.0)
