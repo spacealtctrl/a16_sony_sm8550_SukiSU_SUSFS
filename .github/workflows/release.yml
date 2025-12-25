@@ -497,6 +497,7 @@ jobs:
             echo "CONFIG_ZRAM=y" >> "$DEFCONFIG"
             echo "CONFIG_CRYPTO_LZ4HC=y" >> "$DEFCONFIG"
             echo "CONFIG_CRYPTO_LZ4K=y" >> "$DEFCONFIG"
+            echo "CONFIG_ZRAM_DEF_COMP_LZ4KD=y" >> "$DEFCONFIG"
             echo "CONFIG_CRYPTO_LZ4KD=y" >> "$DEFCONFIG"
             echo "CONFIG_CRYPTO_842=y" >> "$DEFCONFIG"
             echo "CONFIG_ZRAM_WRITEBACK=y" >> "$DEFCONFIG"
