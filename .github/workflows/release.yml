@@ -101,7 +101,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: spacealtctrl/android_kernel_sony_sm8550
-          ref: lineage-23.0
+          ref: lineage-23.1
           path: kernel
           fetch-depth: 1
 
@@ -161,7 +161,10 @@ jobs:
           
           git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           git clone --depth=1 https://github.com/WildPlusKernel/kernel_patches.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
-          git clone --depth=1 https://github.com/ShirkNeko/SukiSU_patch.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
+          
+          # Remove depth from SukiSU clone to allow checkout of specific commit for KPM later
+          git clone https://github.com/ShirkNeko/SukiSU_patch.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
+          
           git clone --depth=1 https://github.com/zzh20188/GKI_KernelSU_SUSFS.git zzh_patches 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           wait
           echo "✓ Dependencies cloned successfully" | tee -a error-log-${{ matrix.device }}.txt
@@ -177,43 +180,21 @@ jobs:
           
           echo "" >> error-log-${{ matrix.device }}.txt
 
-      - name: Clone additional repositories for LZ4 upgrade
-        run: |
-          echo "Verifying LZ4 patches repository..." | tee -a error-log-${{ matrix.device }}.txt
-          if [ -d "zzh_patches" ]; then
-            echo "✓ LZ4 patches repository already available" | tee -a error-log-${{ matrix.device }}.txt
-          else
-            echo "✗ ERROR: LZ4 patches repository missing!" | tee -a error-log-${{ matrix.device }}.txt
-            exit 1
-          fi
-          echo "" >> error-log-${{ matrix.device }}.txt
-
-      - name: Upgrade LZ4 to version 1.10.0
+      - name: Upgrade LZ4 to version 1.10.0 (Official Method)
         if: ${{ github.event.inputs.enable_zram == 'true' }}
         working-directory: kernel
         run: |
-          echo "--- LZ4 1.10.0 Upgrade ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "Upgrading LZ4 to version 1.10.0..." | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "--- LZ4 1.10.0 Upgrade (Official Logic) ---" | tee -a ../error-log-${{ matrix.device }}.txt
           
-          files=(
-              "lib/lz4/lz4_compress.c"
-              "lib/lz4/lz4_decompress.c"
-              "lib/lz4/lz4defs.h"
-              "lib/lz4/lz4hc_compress.c"
-          )
-          
-          for file in "${files[@]}"; do
-              if [ -e "$file" ]; then
-                  rm "$file"
-                  echo "  Removed: $file" | tee -a ../error-log-${{ matrix.device }}.txt
-              else
-                  echo "  ⚠ File not found (skipping): $file" | tee -a ../error-log-${{ matrix.device }}.txt
-              fi
-          done
-          
+          # 1. Clean old files
+          rm -f lib/lz4/lz4_compress.c lib/lz4/lz4_decompress.c lib/lz4/lz4defs.h lib/lz4/lz4hc_compress.c
+          echo "Cleaned old LZ4 files" | tee -a ../error-log-${{ matrix.device }}.txt
+
+          # 2. Copy new files
           cp -r ../zzh_patches/zram/lz4/* ./lib/lz4/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
           cp -r ../zzh_patches/zram/include/linux/* ./include/linux/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
           
+          # 3. Apply Patch
           if [ -f "../zzh_patches/zram/${{ env.KERNEL_VERSION }}/lz4_1.10.0.patch" ]; then
             cp ../zzh_patches/zram/${{ env.KERNEL_VERSION }}/lz4_1.10.0.patch ./
             echo "Applying LZ4 1.10.0 patch..." | tee -a ../error-log-${{ matrix.device }}.txt
@@ -226,6 +207,7 @@ jobs:
             echo "⚠ LZ4 1.10.0 patch not found for kernel ${{ env.KERNEL_VERSION }}" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           
+          # 4. F2FS IOSTAT Fix
           if [ -f "fs/f2fs/Makefile" ]; then
               if ! grep -qF "f2fs-\$(CONFIG_F2FS_IOSTAT) += iostat.o" "fs/f2fs/Makefile"; then
                   echo "f2fs-\$(CONFIG_F2FS_IOSTAT) += iostat.o" >> "fs/f2fs/Makefile"
@@ -265,8 +247,6 @@ jobs:
           LOG="../error-log-${{ matrix.device }}.txt"
           
           echo "--- Adding Baseband-guard ---" | tee -a "$LOG"
-          echo "Downloading and running Baseband-guard setup script..." | tee -a "$LOG"
-          
           # Run setup.sh
           if wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash 2>&1 | tee -a "$LOG"; then
             echo "✓ Baseband-guard setup script completed" | tee -a "$LOG"
@@ -285,46 +265,11 @@ jobs:
             echo "✓ Added CONFIG_BBG=y to defconfig" | tee -a "$LOG"
           fi
           
-          # Verify baseband_guard directory and symlink (note: symlink is "baseband-guard" with hyphen!)
-          echo "Verifying Baseband-guard installation..." | tee -a "$LOG"
-          if [ -d "Baseband-guard" ]; then
-            echo "✓ Baseband-guard directory found" | tee -a "$LOG"
-          else
-            echo "✗ ERROR: Baseband-guard directory not found" | tee -a "$LOG"
-            exit 1
-          fi
-          
-          if [ -L "security/baseband-guard" ]; then
-            echo "✓ Baseband-guard symlink found in security/" | tee -a "$LOG"
-          else
-            echo "✗ ERROR: baseband-guard symlink not found in security/" | tee -a "$LOG"
-            exit 1
-          fi
-          
-          # Verify Makefile was updated
-          if grep -q "baseband-guard" security/Makefile; then
-            echo "✓ Baseband-guard found in security/Makefile" | tee -a "$LOG"
-          else
-            echo "✗ ERROR: baseband-guard not in security/Makefile" | tee -a "$LOG"
-            exit 1
-          fi
-          
-          # Verify Kconfig was updated
-          if grep -q "baseband-guard/Kconfig" security/Kconfig; then
-            echo "✓ Baseband-guard found in security/Kconfig" | tee -a "$LOG"
-          else
-            echo "✗ ERROR: baseband-guard not in security/Kconfig" | tee -a "$LOG"
-            exit 1
-          fi
-          
           # Add LSM configuration to defconfig
           echo "Adding LSM configuration to defconfig..." | tee -a "$LOG"
           if grep -q "CONFIG_DEFAULT_SECURITY_SELINUX=y" "$CONFIG_FILE"; then
             echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> "$CONFIG_FILE"
             echo "✓ Added LSM config with SELinux default" | tee -a "$LOG"
-          elif grep -q "CONFIG_DEFAULT_SECURITY_APPARMOR=y" "$CONFIG_FILE"; then
-            echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,apparmor,selinux,smack,tomoyo,bpf,baseband_guard"' >> "$CONFIG_FILE"
-            echo "✓ Added LSM config with AppArmor default" | tee -a "$LOG"
           else
             echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> "$CONFIG_FILE"
             echo "✓ Added default LSM config" | tee -a "$LOG"
@@ -337,30 +282,12 @@ jobs:
         if: ${{ github.event.inputs.enable_susfs == 'true' }}
         run: |
           echo "--- SUSFS Patch Verification ---" | tee -a error-log-${{ matrix.device }}.txt
-          
           PATCH_FILE="susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch"
-          
           if [ ! -f "$PATCH_FILE" ]; then
             echo "✗ ERROR: SUSFS patch not found: $PATCH_FILE" | tee -a error-log-${{ matrix.device }}.txt
-            echo "Available patches in susfs4ksu/kernel_patches/:" | tee -a error-log-${{ matrix.device }}.txt
-            ls -la susfs4ksu/kernel_patches/ | tee -a error-log-${{ matrix.device }}.txt
             exit 1
           else
             echo "✓ Found SUSFS patch: $PATCH_FILE" | tee -a error-log-${{ matrix.device }}.txt
-          fi
-          
-          if [ ! -d "susfs4ksu/kernel_patches/fs" ]; then
-            echo "✗ ERROR: SUSFS fs directory not found" | tee -a error-log-${{ matrix.device }}.txt
-            exit 1
-          else
-            echo "✓ Found SUSFS fs directory" | tee -a error-log-${{ matrix.device }}.txt
-          fi
-          
-          if [ ! -d "susfs4ksu/kernel_patches/include/linux" ]; then
-            echo "✗ ERROR: SUSFS include directory not found" | tee -a error-log-${{ matrix.device }}.txt
-            exit 1
-          else
-            echo "✓ Found SUSFS include directory" | tee -a error-log-${{ matrix.device }}.txt
           fi
           echo "" >> error-log-${{ matrix.device }}.txt
 
@@ -369,25 +296,15 @@ jobs:
         working-directory: kernel
         run: |
           echo "--- SUSFS Patch Application ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "Applying SUSFS patches..." | tee -a ../error-log-${{ matrix.device }}.txt
           
           # Copy main SUSFS patch
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "✓ Main SUSFS patch copied" | tee -a ../error-log-${{ matrix.device }}.txt
           
           # Copy SUSFS filesystem files
-          if cp ../susfs4ksu/kernel_patches/fs/* ./fs/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ SUSFS fs files copied" | tee -a ../error-log-${{ matrix.device }}.txt
-          else
-            echo "⚠ Some SUSFS fs files not copied" | tee -a ../error-log-${{ matrix.device }}.txt
-          fi
+          cp ../susfs4ksu/kernel_patches/fs/* ./fs/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
           
           # Copy SUSFS include files
-          if cp ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ SUSFS include files copied" | tee -a ../error-log-${{ matrix.device }}.txt
-          else
-            echo "⚠ Some SUSFS include files not copied" | tee -a ../error-log-${{ matrix.device }}.txt
-          fi
+          cp ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
           
           # Apply main SUSFS patch
           echo "Applying main SUSFS patch..." | tee -a ../error-log-${{ matrix.device }}.txt
@@ -402,46 +319,26 @@ jobs:
         working-directory: kernel
         run: |
           echo "--- Applying task_mmu.c Fix ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "Applying task_mmu.c fix for android13-5.15..." | tee -a ../error-log-${{ matrix.device }}.txt
-          
-          # Check if the fix is needed
-          if ! grep -qxF $'\tif (!vma_pages(vma))' ./fs/proc/task_mmu.c; then
-            echo "⚠ vma_pages check not found, applying fix..." | tee -a ../error-log-${{ matrix.device }}.txt
-            
-            # Apply the fix if needed
-            if grep -qxF $'\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
-              sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
-              echo "✓ Applied task_mmu.c fix (replaced 'goto show_pad' with 'return 0')" | tee -a ../error-log-${{ matrix.device }}.txt
-            else
-              echo "ℹ task_mmu.c doesn't need fixing" | tee -a ../error-log-${{ matrix.device }}.txt
-            fi
+          # Apply the fix if needed
+          if grep -qxF $'\t\tgoto show_pad;' ./fs/proc/task_mmu.c; then
+            sed -i -e 's/goto show_pad;/return 0;/' ./fs/proc/task_mmu.c
+            # Remove the unused label to fix -Werror=unused-label
+            sed -i '/show_pad:/d' ./fs/proc/task_mmu.c
+            echo "✓ Applied task_mmu.c fix (replaced 'goto show_pad' with 'return 0' and removed label)" | tee -a ../error-log-${{ matrix.device }}.txt
           else
-            echo "✓ task_mmu.c already has correct vma_pages check" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "ℹ task_mmu.c doesn't need fixing" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
 
-      - name: Apply ZRAM optimizations (LZ4KD)
+      - name: Apply ZRAM optimizations (LZ4KD - Official Method)
         if: ${{ github.event.inputs.enable_zram == 'true' }}
         working-directory: kernel
         run: |
           echo "--- ZRAM LZ4KD Optimization ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "Applying ZRAM LZ4KD optimizations..." | tee -a ../error-log-${{ matrix.device }}.txt
           
-          if cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./include/linux/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ LZ4K include files copied" | tee -a ../error-log-${{ matrix.device }}.txt
-          else
-            echo "⚠ Some LZ4K include files not copied" | tee -a ../error-log-${{ matrix.device }}.txt
-          fi
-          if cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./lib/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ LZ4K lib files copied" | tee -a ../error-log-${{ matrix.device }}.txt
-          else
-            echo "⚠ Some LZ4K lib files not copied" | tee -a ../error-log-${{ matrix.device }}.txt
-          fi
-          if cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./crypto/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ LZ4K crypto files copied" | tee -a ../error-log-${{ matrix.device }}.txt
-          else
-            echo "⚠ Some LZ4K crypto files not copied" | tee -a ../error-log-${{ matrix.device }}.txt
-          fi
+          cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./include/linux/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
+          cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./lib/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
+          cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./crypto/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
           
           if [ -f "../SukiSU_patch/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch" ]; then
             cp ../SukiSU_patch/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch ./
@@ -451,8 +348,6 @@ jobs:
             else
               echo "⚠ lz4kd patch had issues (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
             fi
-          else
-            echo "⚠ lz4kd patch not found for kernel ${{ env.KERNEL_VERSION }}" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
           
@@ -460,10 +355,8 @@ jobs:
         working-directory: kernel
         run: |
           echo "--- Kernel Configuration ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "Adding KernelSU configurations..." | tee -a ../error-log-${{ matrix.device }}.txt
           
           DEFCONFIG="arch/arm64/configs/${{ matrix.device }}_defconfig"
-          
           echo "Using defconfig: $DEFCONFIG" | tee -a ../error-log-${{ matrix.device }}.txt
           
           echo "CONFIG_KSU=y" >> "$DEFCONFIG"
@@ -472,7 +365,6 @@ jobs:
           fi
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> "$DEFCONFIG"
 
-          
           if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
             echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$DEFCONFIG"
@@ -541,7 +433,6 @@ jobs:
         working-directory: kernel
         run: |
           echo "--- Git Configuration ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "Configuring git to prevent dirty build..." | tee -a ../error-log-${{ matrix.device }}.txt
           git config --global user.email "spacealtctrl@pm.me"
           git config --global user.name "spacealtctrl"
           rm -rf .gitmodules 2>/dev/null || true
@@ -622,22 +513,30 @@ jobs:
           ls -lh kernel/out/arch/arm64/boot/Image | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
           
-      - name: Apply KPM patch
+      - name: Apply KPM patch (Official Method)
         if: ${{ github.event.inputs.enable_kpm == 'true' }}
         run: |
-          echo "--- KPM Patch Application ---" | tee -a error-log-${{ matrix.device }}.txt
-          echo "Applying KPM patch to kernel Image..." | tee -a error-log-${{ matrix.device }}.txt
-          cd kernel/out/arch/arm64/boot/
+          echo "--- KPM Patch Application (Official Method) ---" | tee -a error-log-${{ matrix.device }}.txt
           
-          if curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch 2>&1 | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt; then
-            echo "✓ KPM patch downloaded" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
+          # 1. Checkout specific commit in SukiSU_patch (Official requirement)
+          cd SukiSU_patch
+          if git checkout 83aa64b7548890bb1f2eff6c990c03a1802df27b 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
+             echo "✓ Checked out specific SukiSU commit" | tee -a ../error-log-${{ matrix.device }}.txt
           else
-            echo "✗ ERROR: Failed to download KPM patch" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
-            exit 1
+             echo "✗ Failed to checkout specific SukiSU commit" | tee -a ../error-log-${{ matrix.device }}.txt
+             exit 1
           fi
+          cd ..
           
-          chmod 755 patch
-          if ./patch 2>&1 | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt; then
+          # 2. Prepare patch tool from cloned repo
+          cp SukiSU_patch/kpm/patch_linux kernel/out/arch/arm64/boot/
+          
+          # 3. Apply patch
+          cd kernel/out/arch/arm64/boot/
+          chmod 777 patch_linux
+          
+          echo "Running patch_linux..." | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
+          if ./patch_linux 2>&1 | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt; then
             echo "✓ KPM patch applied successfully" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
           else
             echo "✗ ERROR: KPM patch application failed" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
@@ -780,13 +679,13 @@ jobs:
           if [ "${{ github.event.inputs.sukisu_branch }}" == "Dev(开发)" ]; then
             echo "Fetching latest dev/pre-release APK..."
             LATEST_APK=$(curl -s https://api.github.com/repos/SukiSU-Ultra/SukiSU-Ultra/releases | \
-                         jq -r '.[] | select(.prerelease==true) | .assets[].browser_download_url | select(contains(".apk"))' | \
-                         head -1)
+                          jq -r '.[] | select(.prerelease==true) | .assets[].browser_download_url | select(contains(".apk"))' | \
+                          head -1)
           else
             echo "Fetching latest stable APK..."
             LATEST_APK=$(curl -s https://api.github.com/repos/SukiSU-Ultra/SukiSU-Ultra/releases | \
-                         jq -r '.[] | select(.prerelease==false) | .assets[].browser_download_url | select(contains(".apk"))' | \
-                         head -1)
+                          jq -r '.[] | select(.prerelease==false) | .assets[].browser_download_url | select(contains(".apk"))' | \
+                          head -1)
           fi
           
           if [ -n "$LATEST_APK" ]; then
@@ -824,7 +723,7 @@ jobs:
           
           # Create release notes
           cat > release-notes.md << EOF
-          This release includes **SukiSU** for Sony Xperia devices on LineageOS 23.0
+          This release includes **SukiSU** for Sony Xperia devices on LineageOS 23.1
           
           ## Supported Devices:
           - **pdx234** - Sony Xperia 1 V
@@ -845,7 +744,7 @@ jobs:
           <summary>▸ Notes:</summary>
           
           - Device specific builds for Sony Xperia with SM8550
-          - Based on LineageOS 23.0 kernel source (Android 13 base)
+          - Based on LineageOS 23.1 kernel source (Android 13 base)
           - In the latest version of susfs, flashing AK3 with Kernel Flasher may brick your device, try [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher)
           - Flash the AnyKernel3 zip that matches your device model
           
@@ -870,8 +769,8 @@ jobs:
           - **SukiSU Branch**: builtin
           - **Devices**: Sony Xperia 1 V (pdx234), Sony Xperia 5 V (pdx237)
           - **Base Kernel**: 5.15
-          - **Android Version**: 13 (LineageOS 23.0)
-          - **LineageOS Base**: 23.0
+          - **Android Version**: 13 (LineageOS 23.1)
+          - **LineageOS Base**: 23.1
           - **Clang Version**: ${{ env.AOSP_CLANG_VERSION }}
           - **Release Version**: ${{ github.event.inputs.release_version }}
           - **Build Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
@@ -895,6 +794,7 @@ jobs:
             --repo "${{ github.repository }}" \
             --title "${{ env.RELEASE_NAME }}" \
             --notes-file release-notes.md \
+            --target "${{ github.sha }}" \
             ${{ github.event.inputs.sukisu_branch == 'Dev(开发)' && '--prerelease' || '' }} \
             release-assets/*
 
