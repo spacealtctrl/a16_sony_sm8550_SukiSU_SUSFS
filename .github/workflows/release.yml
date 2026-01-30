@@ -101,7 +101,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: spacealtctrl/android_kernel_sony_sm8550
-          ref: lineage-23.1
+          ref: lineage-23.0
           path: kernel
           fetch-depth: 1
 
@@ -154,21 +154,21 @@ jobs:
         run: |
           echo "--- Cloning Dependencies ---" | tee -a error-log-${{ matrix.device }}.txt
           echo "Cloning SukiSU and SUSFS dependencies in parallel..."
-          
+
           # Set SUSFS branch dynamically based on kernel version
           SUSFS_BRANCH="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
           echo "Using SUSFS branch: $SUSFS_BRANCH" | tee -a error-log-${{ matrix.device }}.txt
-          
+
           git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           git clone --depth=1 https://github.com/WildPlusKernel/kernel_patches.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
-          
+
           # Remove depth from SukiSU clone to allow checkout of specific commit for KPM later
           git clone https://github.com/ShirkNeko/SukiSU_patch.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
-          
+
           git clone --depth=1 https://github.com/zzh20188/GKI_KernelSU_SUSFS.git zzh_patches 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           wait
           echo "✓ Dependencies cloned successfully" | tee -a error-log-${{ matrix.device }}.txt
-          
+
           # Verify SukiSU_patch was cloned
           if [ -d "SukiSU_patch" ]; then
             echo "✓ SukiSU_patch repository verified" | tee -a error-log-${{ matrix.device }}.txt
@@ -177,7 +177,7 @@ jobs:
             echo "✗ ERROR: SukiSU_patch repository not found!" | tee -a error-log-${{ matrix.device }}.txt
             exit 1
           fi
-          
+
           echo "" >> error-log-${{ matrix.device }}.txt
 
       - name: Upgrade LZ4 to version 1.10.0 (Official Method)
@@ -185,7 +185,7 @@ jobs:
         working-directory: kernel
         run: |
           echo "--- LZ4 1.10.0 Upgrade (Official Logic) ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          
+
           # 1. Clean old files
           rm -f lib/lz4/lz4_compress.c lib/lz4/lz4_decompress.c lib/lz4/lz4defs.h lib/lz4/lz4hc_compress.c
           echo "Cleaned old LZ4 files" | tee -a ../error-log-${{ matrix.device }}.txt
@@ -193,7 +193,7 @@ jobs:
           # 2. Copy new files
           cp -r ../zzh_patches/zram/lz4/* ./lib/lz4/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
           cp -r ../zzh_patches/zram/include/linux/* ./include/linux/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
-          
+
           # 3. Apply Patch
           if [ -f "../zzh_patches/zram/${{ env.KERNEL_VERSION }}/lz4_1.10.0.patch" ]; then
             cp ../zzh_patches/zram/${{ env.KERNEL_VERSION }}/lz4_1.10.0.patch ./
@@ -206,7 +206,7 @@ jobs:
           else
             echo "⚠ LZ4 1.10.0 patch not found for kernel ${{ env.KERNEL_VERSION }}" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
-          
+
           # 4. F2FS IOSTAT Fix
           if [ -f "fs/f2fs/Makefile" ]; then
               if ! grep -qF "f2fs-\$(CONFIG_F2FS_IOSTAT) += iostat.o" "fs/f2fs/Makefile"; then
@@ -221,18 +221,18 @@ jobs:
         run: |
           echo "--- Adding SukiSU ---" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "Adding SukiSU to kernel..." | tee -a ../error-log-${{ matrix.device }}.txt
-          
+
           # Both Stable and Dev now use builtin branch
           echo "Using SukiSU builtin branch" | tee -a ../error-log-${{ matrix.device }}.txt
           BRANCH="-s builtin"
-          
+
           if curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash $BRANCH 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
             echo "✓ SukiSU setup completed" | tee -a ../error-log-${{ matrix.device }}.txt
           else
             echo "✗ ERROR: SukiSU setup failed!" | tee -a ../error-log-${{ matrix.device }}.txt
             exit 1
           fi
-          
+
           if [ ! -d "KernelSU" ]; then
             echo "✗ ERROR: KernelSU directory not found!" | tee -a ../error-log-${{ matrix.device }}.txt
             exit 1
@@ -245,7 +245,7 @@ jobs:
         working-directory: kernel
         run: |
           LOG="../error-log-${{ matrix.device }}.txt"
-          
+
           echo "--- Adding Baseband-guard ---" | tee -a "$LOG"
           # Run setup.sh
           if wget -O- https://github.com/vc-teahouse/Baseband-guard/raw/main/setup.sh | bash 2>&1 | tee -a "$LOG"; then
@@ -253,10 +253,10 @@ jobs:
           else
             echo "⚠ Baseband-guard setup had issues (continuing)" | tee -a "$LOG"
           fi
-          
+
           echo "Enabling Baseband-guard kernel configuration..." | tee -a "$LOG"
           CONFIG_FILE="arch/arm64/configs/${{ matrix.device }}_defconfig"
-          
+
           # Add CONFIG_BBG=y if not already present
           if grep -q '^CONFIG_BBG=y' "$CONFIG_FILE"; then
             echo "ℹ CONFIG_BBG=y already present" | tee -a "$LOG"
@@ -264,7 +264,7 @@ jobs:
             echo 'CONFIG_BBG=y' >> "$CONFIG_FILE"
             echo "✓ Added CONFIG_BBG=y to defconfig" | tee -a "$LOG"
           fi
-          
+
           # Add LSM configuration to defconfig
           echo "Adding LSM configuration to defconfig..." | tee -a "$LOG"
           if grep -q "CONFIG_DEFAULT_SECURITY_SELINUX=y" "$CONFIG_FILE"; then
@@ -274,7 +274,7 @@ jobs:
             echo 'CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,selinux,smack,tomoyo,apparmor,bpf,baseband_guard"' >> "$CONFIG_FILE"
             echo "✓ Added default LSM config" | tee -a "$LOG"
           fi
-          
+
           echo "✓ Baseband-guard configuration completed" | tee -a "$LOG"
           echo "" >> "$LOG"
 
@@ -296,16 +296,16 @@ jobs:
         working-directory: kernel
         run: |
           echo "--- SUSFS Patch Application ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          
+
           # Copy main SUSFS patch
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch ./ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
-          
+
           # Copy SUSFS filesystem files
           cp ../susfs4ksu/kernel_patches/fs/* ./fs/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
-          
+
           # Copy SUSFS include files
           cp ../susfs4ksu/kernel_patches/include/linux/* ./include/linux/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
-          
+
           # Apply main SUSFS patch
           echo "Applying main SUSFS patch..." | tee -a ../error-log-${{ matrix.device }}.txt
           if patch -p1 --fuzz=3 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
@@ -335,11 +335,11 @@ jobs:
         working-directory: kernel
         run: |
           echo "--- ZRAM LZ4KD Optimization ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          
+
           cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./include/linux/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
           cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./lib/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
           cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./crypto/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
-          
+
           if [ -f "../SukiSU_patch/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch" ]; then
             cp ../SukiSU_patch/other/zram/zram_patch/${{ env.KERNEL_VERSION }}/lz4kd.patch ./
             echo "Applying lz4kd patch..." | tee -a ../error-log-${{ matrix.device }}.txt
@@ -350,15 +350,15 @@ jobs:
             fi
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
-          
+
       - name: Configure kernel features
         working-directory: kernel
         run: |
           echo "--- Kernel Configuration ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          
+
           DEFCONFIG="arch/arm64/configs/${{ matrix.device }}_defconfig"
           echo "Using defconfig: $DEFCONFIG" | tee -a ../error-log-${{ matrix.device }}.txt
-          
+
           echo "CONFIG_KSU=y" >> "$DEFCONFIG"
           if [ "${{ github.event.inputs.enable_kpm }}" == "true" ]; then
             echo "CONFIG_KPM=y" >> "$DEFCONFIG"
@@ -383,7 +383,7 @@ jobs:
             echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> "$DEFCONFIG"
           fi
-          
+
           if [ "${{ github.event.inputs.enable_zram }}" == "true" ]; then
             echo "CONFIG_ZSMALLOC=y" >> "$DEFCONFIG"
             echo "CONFIG_ZRAM=y" >> "$DEFCONFIG"
@@ -395,7 +395,7 @@ jobs:
             echo "CONFIG_ZRAM_WRITEBACK=y" >> "$DEFCONFIG"
             echo "CONFIG_CRYPTO_LZO=y" >> "$DEFCONFIG"
           fi
-          
+
           echo "CONFIG_TMPFS_XATTR=y" >> "$DEFCONFIG"
           echo "CONFIG_TMPFS_POSIX_ACL=y" >> "$DEFCONFIG"
           echo "CONFIG_IP_NF_TARGET_TTL=y" >> "$DEFCONFIG"
@@ -410,7 +410,7 @@ jobs:
           echo "CONFIG_TCP_CONG_HTCP=n" >> "$DEFCONFIG"
           echo "✓ Kernel configuration completed" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
-          
+
       - name: Update kernel version string
         working-directory: kernel
         run: |
@@ -422,13 +422,13 @@ jobs:
           if [ "${{ github.event.inputs.enable_kpm }}" == "true" ]; then
             FEATURES="${FEATURES}-KPM"
           fi
-          
+
           if [ -f "scripts/setlocalversion" ]; then
             sed -i "\$s|echo \"\$res\"|echo \"\$res${FEATURES}\"|" scripts/setlocalversion
             echo "✓ Kernel version string updated with: ${FEATURES}" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
-          
+
       - name: Configure git for clean build
         working-directory: kernel
         run: |
@@ -437,7 +437,7 @@ jobs:
           git config --global user.name "spacealtctrl"
           rm -rf .gitmodules 2>/dev/null || true
           git rm --cached KernelSU 2>/dev/null || true
-          
+
           git add .
           if git commit -m "Applied SukiSU patches and configurations" 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
             echo "✓ Git commit successful" | tee -a ../error-log-${{ matrix.device }}.txt
@@ -445,7 +445,7 @@ jobs:
             echo "ℹ Git commit not needed or failed (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
-          
+
       - name: Optimize ccache
         run: |
           echo "--- Ccache Optimization ---" | tee -a error-log-${{ matrix.device }}.txt
@@ -460,7 +460,7 @@ jobs:
           echo "CCACHE_HARDLINK=true" >> $GITHUB_ENV
           echo "✓ Ccache configured" | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
-          
+
       - name: Pre-build Setup
         run: |
           echo "--- Pre-build Setup ---" | tee -a error-log-${{ matrix.device }}.txt
@@ -471,7 +471,7 @@ jobs:
           echo "✓ tmpfs mounted and linked" | tee -a error-log-${{ matrix.device }}.txt
           df -h | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
-          
+
       - name: Build kernel
         working-directory: kernel
         env:
@@ -489,7 +489,7 @@ jobs:
           export BTF_DEBUG_INFO=y
           echo "Building with $(nproc --all) parallel jobs..." | tee -a ../error-log-${{ matrix.device }}.txt
           echo "Build started: $(date -u)" | tee -a ../error-log-${{ matrix.device }}.txt
-          
+
           if make ${{ env.MAKE_ARGS }} ${{ matrix.device }}_defconfig all 2>&1 | tee build.log; then
             echo "✓ Kernel build completed successfully" | tee -a ../error-log-${{ matrix.device }}.txt
           else
@@ -500,7 +500,7 @@ jobs:
           fi
           echo "Build completed: $(date -u)" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
-          
+
       - name: Verify kernel build
         run: |
           echo "--- Build Verification ---" | tee -a error-log-${{ matrix.device }}.txt
@@ -512,12 +512,12 @@ jobs:
           echo "✓ Build verified successfully:" | tee -a error-log-${{ matrix.device }}.txt
           ls -lh kernel/out/arch/arm64/boot/Image | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
-          
+
       - name: Apply KPM patch (Official Method)
         if: ${{ github.event.inputs.enable_kpm == 'true' }}
         run: |
           echo "--- KPM Patch Application (Official Method) ---" | tee -a error-log-${{ matrix.device }}.txt
-          
+
           # 1. Checkout specific commit in SukiSU_patch (Official requirement)
           cd SukiSU_patch
           if git checkout 83aa64b7548890bb1f2eff6c990c03a1802df27b 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
@@ -527,14 +527,14 @@ jobs:
              exit 1
           fi
           cd ..
-          
+
           # 2. Prepare patch tool from cloned repo
           cp SukiSU_patch/kpm/patch_linux kernel/out/arch/arm64/boot/
-          
+
           # 3. Apply patch
           cd kernel/out/arch/arm64/boot/
           chmod 777 patch_linux
-          
+
           echo "Running patch_linux..." | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
           if ./patch_linux 2>&1 | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt; then
             echo "✓ KPM patch applied successfully" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
@@ -542,10 +542,10 @@ jobs:
             echo "✗ ERROR: KPM patch application failed" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
             exit 1
           fi
-          
+
           rm -rf Image
           mv oImage Image
-          
+
           if [ -f "Image" ]; then
             echo "✓ Patched Image verified" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
           else
@@ -554,7 +554,7 @@ jobs:
           fi
           cd ../../../../..
           echo "" >> error-log-${{ matrix.device }}.txt
-          
+
       - name: Log build configuration
         run: |
           echo "=== Build Configuration Summary ===" | tee build-info-${{ matrix.device }}.txt
@@ -568,21 +568,21 @@ jobs:
           echo "Kernel Version: ${{ env.KERNEL_VERSION }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "Android Version: ${{ env.ANDROID_VERSION }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "Clang Version: ${{ env.AOSP_CLANG_VERSION }}" | tee -a build-info-${{ matrix.device }}.txt
-          
+
           # Extract SUSFS version from build log
           if [ -f "kernel/build.log" ]; then
             SUSFS_VER=$(grep -oP "SUSFS_VERSION: \Kv[0-9]+\.[0-9]+\.[0-9]+" kernel/build.log | head -1 || echo "unknown")
             echo "SUSFS_VERSION: $SUSFS_VER" | tee -a build-info-${{ matrix.device }}.txt
           fi
-          
+
           echo "===================================" | tee -a build-info-${{ matrix.device }}.txt
           echo "" | tee -a build-info-${{ matrix.device }}.txt
-          
+
           # Append complete error log
           if [ -f "error-log-${{ matrix.device }}.txt" ]; then
             cat error-log-${{ matrix.device }}.txt >> build-info-${{ matrix.device }}.txt
           fi
-          
+
           # Add build warnings and errors summary
           if [ -f "kernel/build.log" ]; then
             echo "" >> build-info-${{ matrix.device }}.txt
@@ -592,7 +592,7 @@ jobs:
             echo "=== Build Errors Summary ===" >> build-info-${{ matrix.device }}.txt
             grep -i "error:" kernel/build.log >> build-info-${{ matrix.device }}.txt || echo "No errors found" >> build-info-${{ matrix.device }}.txt
           fi
-          
+
           echo "" >> build-info-${{ matrix.device }}.txt
           echo "=== Summary Statistics ===" >> build-info-${{ matrix.device }}.txt
           if [ -f "error-log-${{ matrix.device }}.txt" ]; then
@@ -604,33 +604,33 @@ jobs:
             echo "Errors: $ERRORS" >> build-info-${{ matrix.device }}.txt
           fi
           echo "===================================" >> build-info-${{ matrix.device }}.txt
-          
+
       - name: Save ccache stats
         if: always()
         run: |
           ccache -s
           echo "Ccache statistics saved"
-          
+
       - name: Package AnyKernel3
         run: |
           git clone --depth=1 https://github.com/WildPlusKernel/AnyKernel3.git -b gki-2.0 AnyKernel3-${{ matrix.device }}
-          
+
           cp kernel/out/arch/arm64/boot/Image AnyKernel3-${{ matrix.device }}/
-          
+
           if [ "${{ github.event.inputs.sukisu_branch }}" == "Stable(标准)" ]; then
             BRANCH_SUFFIX="stable"
           else
             BRANCH_SUFFIX="dev"
           fi
-          
+
           cd AnyKernel3-${{ matrix.device }}
           zip -r9 -q "../AnyKernel3-${{ matrix.device }}-sukisu-${BRANCH_SUFFIX}.zip" * -x .git .github README.md *placeholder
           cd ..
-          
+
       - name: Copy kernel Image for upload
         run: |
           cp kernel/out/arch/arm64/boot/Image Image-${{ matrix.device }}
-          
+
       - name: Upload files
         uses: actions/upload-artifact@v4
         with:
@@ -664,17 +664,17 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release-assets
-          
+
           # Copy pdx234 files
           cp artifacts/pdx234/Image-pdx234 release-assets/Image-pdx234
           cp artifacts/pdx234/build-info-pdx234.txt release-assets/build-info-pdx234.txt
           cp artifacts/pdx234/AnyKernel3-pdx234-sukisu-*.zip release-assets/
-          
+
           # Copy pdx237 files
           cp artifacts/pdx237/Image-pdx237 release-assets/Image-pdx237
           cp artifacts/pdx237/build-info-pdx237.txt release-assets/build-info-pdx237.txt
           cp artifacts/pdx237/AnyKernel3-pdx237-sukisu-*.zip release-assets/
-          
+
           # Auto-fetch latest APK based on branch
           if [ "${{ github.event.inputs.sukisu_branch }}" == "Dev(开发)" ]; then
             echo "Fetching latest dev/pre-release APK..."
@@ -687,7 +687,7 @@ jobs:
                           jq -r '.[] | select(.prerelease==false) | .assets[].browser_download_url | select(contains(".apk"))' | \
                           head -1)
           fi
-          
+
           if [ -n "$LATEST_APK" ]; then
             APK_NAME=$(basename "$LATEST_APK")
             curl -L "$LATEST_APK" -o "release-assets/$APK_NAME"
@@ -695,7 +695,7 @@ jobs:
           else
             echo "WARNING: No APK found, skipping"
           fi
-          
+
           cd release-assets
           sha256sum * > SHA256SUMS.txt
           cd ..
@@ -705,7 +705,7 @@ jobs:
         run: |
           TAG="multi-device-${{ github.event.inputs.release_version }}"
           echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
-          
+
           # Extract SUSFS version from build log (pdx234)
           SUSFS_VERSION="v1.5.12"
           if [ -f "artifacts/pdx234/build-info-pdx234.txt" ]; then
@@ -714,21 +714,21 @@ jobs:
               SUSFS_VERSION="$EXTRACTED"
             fi
           fi
-          
+
           # Create release name
           RELEASE_NAME="pdx234 & pdx237 Kernel: SukiSU & SUSFS ${SUSFS_VERSION}"
           echo "RELEASE_NAME<<EOF" >> $GITHUB_ENV
           echo "$RELEASE_NAME" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
-          
+
           # Create release notes
           cat > release-notes.md << EOF
-          This release includes **SukiSU** for Sony Xperia devices on LineageOS 23.1
-          
+          This release includes **SukiSU** for Sony Xperia devices on LineageOS 23.0
+
           ## Supported Devices:
           - **pdx234** - Sony Xperia 1 V
           - **pdx237** - Sony Xperia 5 V
-          
+
           Features:
           -> SukiSU-${{ github.event.inputs.sukisu_branch }} (builtin)
           -> SUSFS ඞ ${SUSFS_VERSION}
@@ -739,43 +739,43 @@ jobs:
           -> KPM ${{ github.event.inputs.enable_kpm == 'true' && 'Support' || 'not supported' }}
           -> LZ4KD ${{ github.event.inputs.enable_zram == 'true' && 'supported' || 'not supported' }}
           -> LZ4 1.10.0 ${{ github.event.inputs.enable_zram == 'true' && 'supported' || 'not supported' }}
-          
+
           <details>
           <summary>▸ Notes:</summary>
-          
+
           - Device specific builds for Sony Xperia with SM8550
-          - Based on LineageOS 23.1 kernel source (Android 13 base)
+          - Based on LineageOS 23.0 kernel source (Android 13 base)
           - In the latest version of susfs, flashing AK3 with Kernel Flasher may brick your device, try [Horizon Kernel Flasher](https://github.com/libxzr/HorizonKernelFlasher)
           - Flash the AnyKernel3 zip that matches your device model
-          
+
           </details>
-          
+
           ## Downloads:
           - **pdx234 (Xperia 1 V)**: AnyKernel3-pdx234-sukisu-*.zip
           - **pdx237 (Xperia 5 V)**: AnyKernel3-pdx237-sukisu-*.zip
-          
+
           Modules:
           -> https://github.com/sidex15/ksu_module_susfs
-          
+
           SukiSU Manager:
           -> https://github.com/SukiSU-Ultra/SukiSU-Ultra
-          
+
           LZ4 1.10.0: Upgrade from [zzh20188/GKI_KernelSU_SUSFS](https://github.com/zzh20188/GKI_KernelSU_SUSFS)
-          
+
           <details>
           <summary>▸ Commit Information</summary>
-          
+
           Build compiled with:
           - **SukiSU Branch**: builtin
           - **Devices**: Sony Xperia 1 V (pdx234), Sony Xperia 5 V (pdx237)
           - **Base Kernel**: 5.15
-          - **Android Version**: 13 (LineageOS 23.1)
-          - **LineageOS Base**: 23.1
+          - **Android Version**: 13 (LineageOS 23.0)
+          - **LineageOS Base**: 23.0
           - **Clang Version**: ${{ env.AOSP_CLANG_VERSION }}
           - **Release Version**: ${{ github.event.inputs.release_version }}
           - **Build Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
           - **Workflow Run**: [#${{ github.run_number }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})
-          
+
           </details>
           EOF
 
