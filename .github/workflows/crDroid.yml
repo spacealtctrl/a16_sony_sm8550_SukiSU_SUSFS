@@ -487,7 +487,11 @@ jobs:
             echo "✓ Defconfig applied" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           if make ${{ env.MAKE_ARGS }} prepare 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ Kernel prepare completed (SELinux headers generated)" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "✓ Kernel prepare completed" | tee -a ../error-log-${{ matrix.device }}.txt
+          fi
+          echo "Building SELinux subsystem to generate flask.h..." | tee -a ../error-log-${{ matrix.device }}.txt
+          if make ${{ env.MAKE_ARGS }} security/selinux/ 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
+            echo "✓ SELinux headers generated" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
           
@@ -788,7 +792,7 @@ jobs:
           - **SukiSU Branch**: builtin
           - **Devices**: Sony Xperia 1 V (pdx234), Sony Xperia 5 V (pdx237)
           - **Base Kernel**: 5.15
-          - **Android Version**: 16 (crDroid 12.6)
+          - **Android Version**: 13 (crDroid 12.6)
           - **crDroid Base**: 12.6
           - **Clang Version**: ${{ env.AOSP_CLANG_VERSION }}
           - **Release Version**: ${{ github.event.inputs.release_version }}
