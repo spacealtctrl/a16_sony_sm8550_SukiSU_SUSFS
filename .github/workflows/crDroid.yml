@@ -472,6 +472,25 @@ jobs:
           df -h | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
 
+      - name: Generate SELinux headers
+        working-directory: kernel
+        env:
+          MAKE_ARGS:
+            O=out LLVM=1 LLVM_IAS=1 ARCH=arm64
+            CROSS_COMPILE=aarch64-linux-gnu-
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
+        run: |
+          echo "--- Generating SELinux Headers ---" | tee -a ../error-log-${{ matrix.device }}.txt
+          export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
+          echo "Preparing kernel build and generating headers..." | tee -a ../error-log-${{ matrix.device }}.txt
+          if make ${{ env.MAKE_ARGS }} ${{ matrix.device }}_defconfig 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
+            echo "✓ Defconfig applied" | tee -a ../error-log-${{ matrix.device }}.txt
+          fi
+          if make ${{ env.MAKE_ARGS }} prepare 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
+            echo "✓ Kernel prepare completed (SELinux headers generated)" | tee -a ../error-log-${{ matrix.device }}.txt
+          fi
+          echo "" >> ../error-log-${{ matrix.device }}.txt
+          
       - name: Build kernel
         working-directory: kernel
         env:
