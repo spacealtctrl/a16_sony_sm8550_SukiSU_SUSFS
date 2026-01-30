@@ -504,9 +504,10 @@ jobs:
           echo "--- Pre-build Setup ---" | tee -a error-log-${{ matrix.device }}.txt
           sudo mkdir -p /mnt/tmpfs
           sudo mount -t tmpfs -o size=10G tmpfs /mnt/tmpfs
+          sudo chmod 777 /mnt/tmpfs
           mkdir -p /mnt/tmpfs/out
-          ln -sf /mnt/tmpfs/out kernel/out
-          echo "✓ tmpfs mounted and linked" | tee -a error-log-${{ matrix.device }}.txt
+          echo "OUT_DIR=/mnt/tmpfs/out" >> $GITHUB_ENV
+          echo "✓ tmpfs mounted (output will use /mnt/tmpfs/out)" | tee -a error-log-${{ matrix.device }}.txt
           df -h | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
 
@@ -516,10 +517,15 @@ jobs:
           echo "--- Defconfig Verification ---" | tee -a ../error-log-${{ matrix.device }}.txt
           DEFCONFIG="arch/arm64/configs/crdroidpdx234defconfig"
           
+          echo "Current working directory: $(pwd)" | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "ARCH will be set to: arm64" | tee -a ../error-log-${{ matrix.device }}.txt
+          
           if [ -f "$DEFCONFIG" ]; then
-            echo "✓ crdroidpdx234defconfig found" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "✓ crdroidpdx234defconfig found at: $DEFCONFIG" | tee -a ../error-log-${{ matrix.device }}.txt
             ls -lh "$DEFCONFIG" | tee -a ../error-log-${{ matrix.device }}.txt
             echo "Defconfig size: $(wc -l < "$DEFCONFIG") lines" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "First 10 lines of defconfig:" | tee -a ../error-log-${{ matrix.device }}.txt
+            head -10 "$DEFCONFIG" | tee -a ../error-log-${{ matrix.device }}.txt
           else
             echo "✗ ERROR: crdroidpdx234defconfig MISSING!" | tee -a ../error-log-${{ matrix.device }}.txt
             echo "Available configs in arch/arm64/configs/:" | tee -a ../error-log-${{ matrix.device }}.txt
@@ -529,27 +535,49 @@ jobs:
             git status arch/arm64/configs/ | tee -a ../error-log-${{ matrix.device }}.txt
             exit 1
           fi
+          
+          # Test if make can see the defconfig
+          echo "" | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "Testing if make can list the defconfig..." | tee -a ../error-log-${{ matrix.device }}.txt
+          export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
+          if make ARCH=arm64 help 2>&1 | grep -q "crdroidpdx234"; then
+            echo "✓ Make can see crdroidpdx234defconfig in help output" | tee -a ../error-log-${{ matrix.device }}.txt
+          else
+            echo "⚠ Make doesn't list crdroidpdx234defconfig in help" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "Available *defconfig targets:" | tee -a ../error-log-${{ matrix.device }}.txt
+            make ARCH=arm64 help 2>&1 | grep "_defconfig" | head -20 | tee -a ../error-log-${{ matrix.device }}.txt
+          fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
           
       - name: Build kernel
         working-directory: kernel
-        env:
-          MAKE_ARGS:
-            O=out LLVM=1 LLVM_IAS=1 ARCH=arm64
-            -j$(nproc --all) CC="ccache clang"
-            CROSS_COMPILE=aarch64-linux-gnu-
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-            LOCALVERSION=-${{ env.KERNEL_LOCALVERSION }}
-            KCFLAGS="-Wframe-larger-than=15000"
         run: |
           echo "--- Kernel Build ---" | tee -a ../error-log-${{ matrix.device }}.txt
           export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
           export PAHOLE=/usr/bin/pahole
           export BTF_DEBUG_INFO=y
+          
+          # Use absolute path for output directory (no symlink)
+          OUT_PATH="/mnt/tmpfs/out"
+          echo "Source directory: $(pwd)" | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "Output directory: $OUT_PATH" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "Building with $(nproc --all) parallel jobs..." | tee -a ../error-log-${{ matrix.device }}.txt
           echo "Build started: $(date -u)" | tee -a ../error-log-${{ matrix.device }}.txt
 
-          if make ${{ env.MAKE_ARGS }} crdroidpdx234defconfig all 2>&1 | tee build.log; then
+          # Use set -o pipefail to catch make failures even when piped to tee
+          set -o pipefail
+          if make \
+            O="$OUT_PATH" \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            ARCH=arm64 \
+            -j$(nproc --all) \
+            CC="ccache clang" \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            LOCALVERSION=-${{ env.KERNEL_LOCALVERSION }} \
+            KCFLAGS="-Wframe-larger-than=15000" \
+            crdroidpdx234defconfig all 2>&1 | tee build.log; then
             echo "✓ Kernel build completed successfully" | tee -a ../error-log-${{ matrix.device }}.txt
           else
             echo "✗ ERROR: Kernel build failed!" | tee -a ../error-log-${{ matrix.device }}.txt
@@ -564,18 +592,22 @@ jobs:
         run: |
           echo "--- Build Verification ---" | tee -a error-log-${{ matrix.device }}.txt
           echo "Verifying kernel build..."
-          if [ ! -f "kernel/out/arch/arm64/boot/Image" ]; then
+          OUT_PATH="/mnt/tmpfs/out"
+          if [ ! -f "$OUT_PATH/arch/arm64/boot/Image" ]; then
             echo "✗ ERROR: Kernel Image not found! Build failed." | tee -a error-log-${{ matrix.device }}.txt
+            echo "Contents of $OUT_PATH/arch/arm64/boot/:" | tee -a error-log-${{ matrix.device }}.txt
+            ls -la "$OUT_PATH/arch/arm64/boot/" 2>&1 | tee -a error-log-${{ matrix.device }}.txt
             exit 1
           fi
           echo "✓ Build verified successfully:" | tee -a error-log-${{ matrix.device }}.txt
-          ls -lh kernel/out/arch/arm64/boot/Image | tee -a error-log-${{ matrix.device }}.txt
+          ls -lh "$OUT_PATH/arch/arm64/boot/Image" | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
 
       - name: Apply KPM patch (Official Method)
         if: ${{ github.event.inputs.enable_kpm == 'true' }}
         run: |
           echo "--- KPM Patch Application (Official Method) ---" | tee -a error-log-${{ matrix.device }}.txt
+          OUT_PATH="/mnt/tmpfs/out"
 
           # 1. Checkout specific commit in SukiSU_patch (Official requirement)
           cd SukiSU_patch
@@ -588,10 +620,10 @@ jobs:
           cd ..
 
           # 2. Prepare patch tool from cloned repo
-          cp SukiSU_patch/kpm/patch_linux kernel/out/arch/arm64/boot/
+          cp SukiSU_patch/kpm/patch_linux "$OUT_PATH/arch/arm64/boot/"
 
           # 3. Apply patch
-          cd kernel/out/arch/arm64/boot/
+          cd "$OUT_PATH/arch/arm64/boot/"
           chmod 777 patch_linux
 
           echo "Running patch_linux..." | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
@@ -611,7 +643,7 @@ jobs:
             echo "✗ ERROR: Patched Image not found" | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
             exit 1
           fi
-          cd ../../../../..
+          cd $GITHUB_WORKSPACE
           echo "" >> error-log-${{ matrix.device }}.txt
 
       - name: Log build configuration
@@ -629,8 +661,9 @@ jobs:
           echo "Clang Version: ${{ env.AOSP_CLANG_VERSION }}" | tee -a build-info-${{ matrix.device }}.txt
 
           # Extract SUSFS version from build log
-          if [ -f "kernel/build.log" ]; then
-            SUSFS_VER=$(grep -oP "SUSFS_VERSION: \Kv[0-9]+\.[0-9]+\.[0-9]+" kernel/build.log | head -1 || echo "unknown")
+          BUILD_LOG="kernel/build.log"
+          if [ -f "$BUILD_LOG" ]; then
+            SUSFS_VER=$(grep -oP "SUSFS_VERSION: \Kv[0-9]+\.[0-9]+\.[0-9]+" "$BUILD_LOG" | head -1 || echo "unknown")
             echo "SUSFS_VERSION: $SUSFS_VER" | tee -a build-info-${{ matrix.device }}.txt
           fi
 
@@ -643,13 +676,13 @@ jobs:
           fi
 
           # Add build warnings and errors summary
-          if [ -f "kernel/build.log" ]; then
+          if [ -f "$BUILD_LOG" ]; then
             echo "" >> build-info-${{ matrix.device }}.txt
             echo "=== Build Warnings Summary ===" >> build-info-${{ matrix.device }}.txt
-            grep -i "warning:" kernel/build.log >> build-info-${{ matrix.device }}.txt || echo "No warnings found" >> build-info-${{ matrix.device }}.txt
+            grep -i "warning:" "$BUILD_LOG" >> build-info-${{ matrix.device }}.txt || echo "No warnings found" >> build-info-${{ matrix.device }}.txt
             echo "" >> build-info-${{ matrix.device }}.txt
             echo "=== Build Errors Summary ===" >> build-info-${{ matrix.device }}.txt
-            grep -i "error:" kernel/build.log >> build-info-${{ matrix.device }}.txt || echo "No errors found" >> build-info-${{ matrix.device }}.txt
+            grep -i "error:" "$BUILD_LOG" >> build-info-${{ matrix.device }}.txt || echo "No errors found" >> build-info-${{ matrix.device }}.txt
           fi
 
           echo "" >> build-info-${{ matrix.device }}.txt
@@ -672,9 +705,10 @@ jobs:
 
       - name: Package AnyKernel3
         run: |
+          OUT_PATH="/mnt/tmpfs/out"
           git clone --depth=1 https://github.com/WildPlusKernel/AnyKernel3.git -b gki-2.0 AnyKernel3-${{ matrix.device }}
 
-          cp kernel/out/arch/arm64/boot/Image AnyKernel3-${{ matrix.device }}/
+          cp "$OUT_PATH/arch/arm64/boot/Image" AnyKernel3-${{ matrix.device }}/
 
           if [ "${{ github.event.inputs.sukisu_branch }}" == "Stable(标准)" ]; then
             BRANCH_SUFFIX="stable"
@@ -688,7 +722,8 @@ jobs:
 
       - name: Copy kernel Image for upload
         run: |
-          cp kernel/out/arch/arm64/boot/Image Image-${{ matrix.device }}
+          OUT_PATH="/mnt/tmpfs/out"
+          cp "$OUT_PATH/arch/arm64/boot/Image" Image-${{ matrix.device }}
 
       - name: Upload files
         uses: actions/upload-artifact@v4
