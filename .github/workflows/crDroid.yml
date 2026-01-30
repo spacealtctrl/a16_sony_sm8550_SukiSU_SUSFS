@@ -105,6 +105,27 @@ jobs:
           path: kernel
           fetch-depth: 1
 
+      - name: Verify kernel checkout
+        working-directory: kernel
+        run: |
+          echo "--- Kernel Checkout Verification ---" | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "Checking kernel repository state..." | tee -a ../error-log-${{ matrix.device }}.txt
+          git branch -v | tee -a ../error-log-${{ matrix.device }}.txt
+          git log --oneline -n 5 | tee -a ../error-log-${{ matrix.device }}.txt
+          
+          DEFCONFIG="arch/arm64/configs/crdroidpdx234defconfig"
+          if [ -f "$DEFCONFIG" ]; then
+            echo "✓ crdroidpdx234defconfig present after checkout" | tee -a ../error-log-${{ matrix.device }}.txt
+            ls -lh "$DEFCONFIG" | tee -a ../error-log-${{ matrix.device }}.txt
+          else
+            echo "✗ ERROR: crdroidpdx234defconfig NOT found after checkout!" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "This means the file doesn't exist in the lineage-23.2 branch" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "Available defconfigs:" | tee -a ../error-log-${{ matrix.device }}.txt
+            ls -la arch/arm64/configs/*.defconfig 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
+            exit 1
+          fi
+          echo "" >> ../error-log-${{ matrix.device }}.txt
+
       - name: Clean kernel build environment
         working-directory: kernel
         run: |
@@ -433,6 +454,16 @@ jobs:
         working-directory: kernel
         run: |
           echo "--- Git Configuration ---" | tee -a ../error-log-${{ matrix.device }}.txt
+          
+          # Verify defconfig exists before git operations
+          DEFCONFIG="arch/arm64/configs/crdroidpdx234defconfig"
+          if [ ! -f "$DEFCONFIG" ]; then
+            echo "✗ ERROR: Defconfig was deleted by patches before git commit!" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "Available configs:" | tee -a ../error-log-${{ matrix.device }}.txt
+            ls -la arch/arm64/configs/ | tee -a ../error-log-${{ matrix.device }}.txt
+            exit 1
+          fi
+          
           git config --global user.email "spacealtctrl@pm.me"
           git config --global user.name "spacealtctrl"
           rm -rf .gitmodules 2>/dev/null || true
@@ -444,6 +475,13 @@ jobs:
           else
             echo "ℹ Git commit not needed or failed (continuing)" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
+          
+          # Verify defconfig still exists after git operations
+          if [ ! -f "$DEFCONFIG" ]; then
+            echo "✗ ERROR: Defconfig was deleted during git operations!" | tee -a ../error-log-${{ matrix.device }}.txt
+            exit 1
+          fi
+          echo "✓ Defconfig verified after git operations" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
 
       - name: Optimize ccache
@@ -471,6 +509,27 @@ jobs:
           echo "✓ tmpfs mounted and linked" | tee -a error-log-${{ matrix.device }}.txt
           df -h | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
+
+      - name: Verify defconfig exists before build
+        working-directory: kernel
+        run: |
+          echo "--- Defconfig Verification ---" | tee -a ../error-log-${{ matrix.device }}.txt
+          DEFCONFIG="arch/arm64/configs/crdroidpdx234defconfig"
+          
+          if [ -f "$DEFCONFIG" ]; then
+            echo "✓ crdroidpdx234defconfig found" | tee -a ../error-log-${{ matrix.device }}.txt
+            ls -lh "$DEFCONFIG" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "Defconfig size: $(wc -l < "$DEFCONFIG") lines" | tee -a ../error-log-${{ matrix.device }}.txt
+          else
+            echo "✗ ERROR: crdroidpdx234defconfig MISSING!" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "Available configs in arch/arm64/configs/:" | tee -a ../error-log-${{ matrix.device }}.txt
+            ls -la arch/arm64/configs/ | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "Checking if file was deleted by patches..." | tee -a ../error-log-${{ matrix.device }}.txt
+            git status arch/arm64/configs/ | tee -a ../error-log-${{ matrix.device }}.txt
+            exit 1
+          fi
+          echo "" >> ../error-log-${{ matrix.device }}.txt
           
       - name: Build kernel
         working-directory: kernel
