@@ -33,8 +33,8 @@ on:
         type: string
 
 env:
-  AOSP_TOOLCHAIN_BRANCH: main
-  AOSP_CLANG_VERSION: r563880c
+  AOSP_TOOLCHAIN_BRANCH: android16
+  AOSP_CLANG_VERSION: r547379
   KERNEL_LOCALVERSION: spacealtctrl-sukisu
   ANDROID_VERSION: android13
   KERNEL_VERSION: 5.15
