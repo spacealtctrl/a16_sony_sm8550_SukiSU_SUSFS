@@ -769,7 +769,7 @@ jobs:
           - **SukiSU Branch**: builtin
           - **Devices**: Sony Xperia 1 V (pdx234), Sony Xperia 5 V (pdx237)
           - **Base Kernel**: 5.15
-          - **Android Version**: 13 (crDroid 12.6)
+          - **Android Version**: 16 (crDroid 12.6)
           - **crDroid Base**: 12.6
           - **Clang Version**: ${{ env.AOSP_CLANG_VERSION }}
           - **Release Version**: ${{ github.event.inputs.release_version }}
