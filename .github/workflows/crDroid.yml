@@ -33,8 +33,8 @@ on:
         type: string
 
 env:
-  AOSP_TOOLCHAIN_BRANCH: android16
-  AOSP_CLANG_VERSION: r522817
+  AOSP_TOOLCHAIN_BRANCH: main
+  AOSP_CLANG_VERSION: r563880c
   KERNEL_LOCALVERSION: spacealtctrl-sukisu
   ANDROID_VERSION: android13
   KERNEL_VERSION: 5.15
@@ -471,36 +471,6 @@ jobs:
           echo "✓ tmpfs mounted and linked" | tee -a error-log-${{ matrix.device }}.txt
           df -h | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
-
-      - name: Generate SELinux headers
-        working-directory: kernel
-        env:
-          MAKE_ARGS:
-            O=out LLVM=1 LLVM_IAS=1 ARCH=arm64
-            CROSS_COMPILE=aarch64-linux-gnu-
-            CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-        run: |
-          echo "--- Generating SELinux Headers ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
-          echo "Preparing kernel build and generating headers..." | tee -a ../error-log-${{ matrix.device }}.txt
-          if make ${{ env.MAKE_ARGS }} ${{ matrix.device }}_defconfig 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ Defconfig applied" | tee -a ../error-log-${{ matrix.device }}.txt
-          fi
-          if make ${{ env.MAKE_ARGS }} prepare scripts 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ Kernel prepare and scripts completed" | tee -a ../error-log-${{ matrix.device }}.txt
-          fi
-          echo "Forcing SELinux header generation..." | tee -a ../error-log-${{ matrix.device }}.txt
-          if make ${{ env.MAKE_ARGS }} -j1 security/selinux/av_permissions.h 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ SELinux av_permissions.h generated" | tee -a ../error-log-${{ matrix.device }}.txt
-          fi
-          # Verify flask.h exists
-          if [ -f "out/security/selinux/flask.h" ] || [ -f "security/selinux/flask.h" ]; then
-            echo "✓ flask.h verified" | tee -a ../error-log-${{ matrix.device }}.txt
-          else
-            echo "⚠ flask.h not found, attempting manual generation..." | tee -a ../error-log-${{ matrix.device }}.txt
-            make ${{ env.MAKE_ARGS }} -j1 security/selinux/flask.h 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt || true
-          fi
-          echo "" >> ../error-log-${{ matrix.device }}.txt
           
       - name: Build kernel
         working-directory: kernel
