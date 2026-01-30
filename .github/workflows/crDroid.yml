@@ -564,7 +564,28 @@ jobs:
           echo "Building with $(nproc --all) parallel jobs..." | tee -a ../error-log-${{ matrix.device }}.txt
           echo "Build started: $(date -u)" | tee -a ../error-log-${{ matrix.device }}.txt
 
-          # Use set -o pipefail to catch make failures even when piped to tee
+          # Create output directory structure
+          mkdir -p "$OUT_PATH"
+          
+          # Copy defconfig to output .config (bypass kconfig target system)
+          echo "Loading defconfig manually (kconfig doesn't register custom defconfigs)..." | tee -a ../error-log-${{ matrix.device }}.txt
+          cp arch/arm64/configs/crdroidpdx234defconfig "$OUT_PATH/.config"
+          echo "✓ Defconfig copied to $OUT_PATH/.config" | tee -a ../error-log-${{ matrix.device }}.txt
+          
+          # Process the config with olddefconfig (expands and validates)
+          echo "Processing config with olddefconfig..." | tee -a ../error-log-${{ matrix.device }}.txt
+          make \
+            O="$OUT_PATH" \
+            LLVM=1 \
+            LLVM_IAS=1 \
+            ARCH=arm64 \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
+            olddefconfig 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "✓ Config processed" | tee -a ../error-log-${{ matrix.device }}.txt
+
+          # Build kernel
+          echo "Building kernel..." | tee -a ../error-log-${{ matrix.device }}.txt
           set -o pipefail
           if make \
             O="$OUT_PATH" \
@@ -577,7 +598,7 @@ jobs:
             CROSS_COMPILE_ARM32=arm-linux-gnueabi- \
             LOCALVERSION=-${{ env.KERNEL_LOCALVERSION }} \
             KCFLAGS="-Wframe-larger-than=15000" \
-            crdroidpdx234defconfig all 2>&1 | tee build.log; then
+            all 2>&1 | tee build.log; then
             echo "✓ Kernel build completed successfully" | tee -a ../error-log-${{ matrix.device }}.txt
           else
             echo "✗ ERROR: Kernel build failed!" | tee -a ../error-log-${{ matrix.device }}.txt
