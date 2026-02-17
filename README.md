@@ -10,7 +10,6 @@
 - **SukiSU Ultra**
 - **SUSFS (ඞ) 2.0.0**
 - **[Baseband-guard](https://github.com/vc-teahouse/Baseband-guard)**
-- **SUS_MAPS**
 - **KPM**
 - **BBR TCP**
 - **LZ4KD**
