@@ -16,7 +16,7 @@
 - **LZ4 1.10.0** - Upgraded
 
 ## Installation
-1. Ensure you're running **LineageOS 23.0**
+1. Ensure you're running **LineageOS 23.2 / crDroid 12.7**
 2. Download the latest release from [Releases](../../releases)
 3. Boot into custom recovery ([TWRP](https://xdaforums.com/t/recovery-unofficial-updated-teamwin-recovery-project-3-7-1-for-xperia-1v-03-20-2024.4662645/))
 4. Flash the AnyKernel3 zip
@@ -51,7 +51,7 @@ This wouldn't be possible without the amazing work from:
 - **[WildKernels](https://github.com/WildKernels/AnyKernel3)** - AnyKernel3 branch
 
 ### Special Thanks
-- **LineageOS Team** - For the LineageOS 23.0 kernel source
+- **LineageOS Team** - For the LineageOS 23.2 kernel source
 - **Sony Open Devices Project** - For device support
 - **[sidex15](https://github.com/sidex15)** - SUSFS module development
 - **[libxzr](https://github.com/libxzr)** - Horizon Kernel Flasher
