@@ -159,7 +159,7 @@ jobs:
           SUSFS_BRANCH="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
           echo "Using SUSFS branch: $SUSFS_BRANCH" | tee -a error-log-${{ matrix.device }}.txt
 
-          git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
+          git clone --depth=1 https://github.com/ShirkNeko/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
           git clone --depth=1 https://github.com/WildPlusKernel/kernel_patches.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
 
           # Remove depth from SukiSU clone to allow checkout of specific commit for KPM later
@@ -367,13 +367,11 @@ jobs:
 
           if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
             echo "CONFIG_KSU_SUSFS=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> "$DEFCONFIG"
-            echo "CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_SUS_MAP=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> "$DEFCONFIG"
             echo "CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y" >> "$DEFCONFIG"
@@ -518,21 +516,10 @@ jobs:
         run: |
           echo "--- KPM Patch Application (Official Method) ---" | tee -a error-log-${{ matrix.device }}.txt
 
-          # 1. Checkout specific commit in SukiSU_patch (Official requirement)
-          cd SukiSU_patch
-          if git checkout 83aa64b7548890bb1f2eff6c990c03a1802df27b 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-             echo "✓ Checked out specific SukiSU commit" | tee -a ../error-log-${{ matrix.device }}.txt
-          else
-             echo "✗ Failed to checkout specific SukiSU commit" | tee -a ../error-log-${{ matrix.device }}.txt
-             exit 1
-          fi
-          cd ..
-
-          # 2. Prepare patch tool from cloned repo
-          cp SukiSU_patch/kpm/patch_linux kernel/out/arch/arm64/boot/
-
-          # 3. Apply patch
+          # Apply patch
           cd kernel/out/arch/arm64/boot/
+          echo "Downloading patch_linux..." | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
+          curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU_patch/refs/heads/main/kpm/patch_linux" -o patch_linux
           chmod 777 patch_linux
 
           echo "Running patch_linux..." | tee -a $GITHUB_WORKSPACE/error-log-${{ matrix.device }}.txt
@@ -723,7 +710,7 @@ jobs:
 
           # Create release notes
           cat > release-notes.md << EOF
-          This release includes **SukiSU** for Sony Xperia devices on LineageOS 23.2
+          This release includes **SukiSU** for Sony Xperia devices on LineageOS 23.2 / crDroid 12.7
 
           ## Supported Devices:
           - **pdx234** - Sony Xperia 1 V
@@ -733,7 +720,6 @@ jobs:
           -> SukiSU-${{ github.event.inputs.sukisu_branch }} (builtin)
           -> SUSFS ඞ ${SUSFS_VERSION}
           -> Inline Hook
-          -> SUS_MAPS
           -> Baseband-guard Support
           -> BBR Support
           -> KPM ${{ github.event.inputs.enable_kpm == 'true' && 'Support' || 'not supported' }}
@@ -769,8 +755,7 @@ jobs:
           - **SukiSU Branch**: builtin
           - **Devices**: Sony Xperia 1 V (pdx234), Sony Xperia 5 V (pdx237)
           - **Base Kernel**: 5.15
-          - **Android Version**: 13 (LineageOS 23.2)
-          - **LineageOS Base**: 23.2
+          - **Android Version**: 16 (LineageOS 23.2 - crDroid 12.7)
           - **Clang Version**: ${{ env.AOSP_CLANG_VERSION }}
           - **Release Version**: ${{ github.event.inputs.release_version }}
           - **Build Date**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
