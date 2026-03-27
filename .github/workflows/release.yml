@@ -100,7 +100,7 @@ jobs:
       - name: Sync kernel repository
         uses: actions/checkout@v4
         with:
-          repository: spacealtctrl/android_kernel_sony_sm8550
+          repository: lineageos/android_kernel_sony_sm8550
           ref: lineage-23.2
           path: kernel
           fetch-depth: 1
