@@ -97,6 +97,11 @@ jobs:
           echo "Device: ${{ matrix.device }}" >> error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
 
+      - name: Checkout build configs
+        uses: actions/checkout@v4
+        with:
+          path: build-configs
+
       - name: Sync kernel repository
         uses: actions/checkout@v4
         with:
@@ -110,8 +115,15 @@ jobs:
         run: |
           echo "Cleaning kernel build environment..." | tee -a ../error-log-${{ matrix.device }}.txt
           make mrproper 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
-          make clean 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt
           echo "✓ Kernel environment cleaned" | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "" >> ../error-log-${{ matrix.device }}.txt
+
+      - name: Install base defconfig from stock boot.img
+        working-directory: kernel
+        run: |
+          echo "--- Installing Base Defconfig ---" | tee -a ../error-log-${{ matrix.device }}.txt
+          cp ../build-configs/lineage-23.2-stock.config arch/arm64/configs/${{ matrix.device }}_defconfig
+          echo "✓ Installed stock defconfig ($(wc -l < arch/arm64/configs/${{ matrix.device }}_defconfig) lines)" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
 
       - name: Cache Clang
@@ -470,6 +482,27 @@ jobs:
           df -h | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
 
+      - name: Fix vendor driver build errors
+        working-directory: kernel
+        run: |
+          echo "--- Fixing Vendor Driver Errors ---" | tee -a ../error-log-${{ matrix.device }}.txt
+          # Fix uninitialized variable in qcom-hv-haptics.c
+          sed -i 's/const char \*name;/const char *name = "UNKNOWN";/' drivers/input/misc/qcom-hv-haptics.c
+          # Fix uninitialized variable in cpu_voltage_cooling.c
+          sed -i 's/\*cpu1_freq_table, \*cpu2_freq_table;/*cpu1_freq_table = NULL, *cpu2_freq_table = NULL;/' drivers/thermal/qcom/cpu_voltage_cooling.c
+          echo "✓ Vendor driver fixes applied" | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "" >> ../error-log-${{ matrix.device }}.txt
+
+      - name: Pre-generate SELinux headers for KPM
+        working-directory: kernel
+        run: |
+          echo "--- Generating SELinux Headers ---" | tee -a ../error-log-${{ matrix.device }}.txt
+          mkdir -p out/security/selinux
+          gcc -o out/genheaders scripts/selinux/genheaders/genheaders.c -I security/selinux/include
+          ./out/genheaders out/security/selinux/flask.h out/security/selinux/av_permissions.h
+          echo "✓ flask.h and av_permissions.h generated" | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "" >> ../error-log-${{ matrix.device }}.txt
+
       - name: Build kernel
         working-directory: kernel
         env:
@@ -488,7 +521,11 @@ jobs:
           echo "Building with $(nproc --all) parallel jobs..." | tee -a ../error-log-${{ matrix.device }}.txt
           echo "Build started: $(date -u)" | tee -a ../error-log-${{ matrix.device }}.txt
 
-          if make ${{ env.MAKE_ARGS }} ${{ matrix.device }}_defconfig all 2>&1 | tee build.log; then
+          # Generate defconfig and prepare headers (flask.h etc) before full parallel build
+          make ${{ env.MAKE_ARGS }} ${{ matrix.device }}_defconfig 2>&1 | tee build.log
+          make ${{ env.MAKE_ARGS }} prepare 2>&1 | tee -a build.log
+
+          if make ${{ env.MAKE_ARGS }} all 2>&1 | tee -a build.log; then
             echo "✓ Kernel build completed successfully" | tee -a ../error-log-${{ matrix.device }}.txt
           else
             echo "✗ ERROR: Kernel build failed!" | tee -a ../error-log-${{ matrix.device }}.txt
