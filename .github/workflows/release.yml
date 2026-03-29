@@ -434,8 +434,10 @@ jobs:
           fi
 
           if [ -f "scripts/setlocalversion" ]; then
+            # Remove -dirty suffix
+            sed -i "s/printf '%s' -dirty/# dirty check disabled/" scripts/setlocalversion
             sed -i "\$s|echo \"\$res\"|echo \"\$res${FEATURES}\"|" scripts/setlocalversion
-            echo "✓ Kernel version string updated with: ${FEATURES}" | tee -a ../error-log-${{ matrix.device }}.txt
+            echo "✓ Kernel version string updated with: ${FEATURES} (dirty check removed)" | tee -a ../error-log-${{ matrix.device }}.txt
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
 
