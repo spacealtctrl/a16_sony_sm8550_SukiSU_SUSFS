@@ -425,7 +425,8 @@ jobs:
         working-directory: kernel
         run: |
           echo "--- Kernel Version String ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          FEATURES=""
+          DEFCONFIG="arch/arm64/configs/${{ matrix.device }}_defconfig"
+          FEATURES="${{ env.KERNEL_LOCALVERSION }}"
           if [ "${{ github.event.inputs.enable_susfs }}" == "true" ]; then
             FEATURES="${FEATURES}-SUSFS"
           fi
@@ -433,12 +434,12 @@ jobs:
             FEATURES="${FEATURES}-KPM"
           fi
 
-          if [ -f "scripts/setlocalversion" ]; then
-            # Remove -dirty suffix
-            sed -i "s/printf '%s' -dirty/# dirty check disabled/" scripts/setlocalversion
-            sed -i "\$s|echo \"\$res\"|echo \"\$res${FEATURES}\"|" scripts/setlocalversion
-            echo "✓ Kernel version string updated with: ${FEATURES} (dirty check removed)" | tee -a ../error-log-${{ matrix.device }}.txt
-          fi
+          # Set version via defconfig - disable auto and set full string
+          sed -i 's/CONFIG_LOCALVERSION_AUTO=y/CONFIG_LOCALVERSION_AUTO=n/' "$DEFCONFIG"
+          sed -i "s|CONFIG_LOCALVERSION=\".*\"|CONFIG_LOCALVERSION=\"-${FEATURES}\"|" "$DEFCONFIG"
+          # Remove -dirty suffix from setlocalversion
+          sed -i "s/printf '%s' -dirty/# dirty check disabled/" scripts/setlocalversion
+          echo "✓ Kernel version: -${FEATURES}" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
 
       - name: Configure git for clean build
@@ -484,27 +485,6 @@ jobs:
           df -h | tee -a error-log-${{ matrix.device }}.txt
           echo "" >> error-log-${{ matrix.device }}.txt
 
-      - name: Fix vendor driver build errors
-        working-directory: kernel
-        run: |
-          echo "--- Fixing Vendor Driver Errors ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          # Fix uninitialized variable in qcom-hv-haptics.c
-          sed -i 's/const char \*name;/const char *name = "UNKNOWN";/' drivers/input/misc/qcom-hv-haptics.c
-          # Fix uninitialized variable in cpu_voltage_cooling.c
-          sed -i 's/\*cpu1_freq_table, \*cpu2_freq_table;/*cpu1_freq_table = NULL, *cpu2_freq_table = NULL;/' drivers/thermal/qcom/cpu_voltage_cooling.c
-          echo "✓ Vendor driver fixes applied" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "" >> ../error-log-${{ matrix.device }}.txt
-
-      - name: Pre-generate SELinux headers for KPM
-        working-directory: kernel
-        run: |
-          echo "--- Generating SELinux Headers ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          mkdir -p out/security/selinux
-          gcc -o out/genheaders scripts/selinux/genheaders/genheaders.c -I security/selinux/include
-          ./out/genheaders out/security/selinux/flask.h out/security/selinux/av_permissions.h
-          echo "✓ flask.h and av_permissions.h generated" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "" >> ../error-log-${{ matrix.device }}.txt
-
       - name: Build kernel
         working-directory: kernel
         env:
@@ -513,7 +493,6 @@ jobs:
             -j$(nproc --all) CC="ccache clang"
             CROSS_COMPILE=aarch64-linux-gnu-
             CROSS_COMPILE_ARM32=arm-linux-gnueabi-
-            LOCALVERSION=-${{ env.KERNEL_LOCALVERSION }}
             KCFLAGS="-Wframe-larger-than=15000"
         run: |
           echo "--- Kernel Build ---" | tee -a ../error-log-${{ matrix.device }}.txt
