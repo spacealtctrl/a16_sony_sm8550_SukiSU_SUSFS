@@ -154,7 +154,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          git add arch/arm64/configs/pdx{234,237}_defconfig
+          git add pdx{234,237}_defconfig
           
           git diff --cached --quiet && {
             echo "No changes to defconfigs"
