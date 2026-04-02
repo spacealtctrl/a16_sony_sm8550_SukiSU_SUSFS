@@ -1,0 +1,164 @@
+name: Update defconfigs [weekly]
+
+on:
+  schedule:
+    - cron: "0 4 * * 2"
+  workflow_dispatch:
+
+jobs:
+  extract-defconfigs:
+    runs-on: ubuntu-latest
+    env:
+      DEVICES: pdx234 pdx237
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node & Playwright
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - run: |
+          npm install playwright
+          npx playwright install --with-deps
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y wget gzip file
+
+      - name: Fetch boot.img links
+        run: |
+          cat > fetch_boot_links.js << 'EOF'
+          const { chromium } = require('playwright');
+          const fs = require('fs');
+          const devices = process.env.DEVICES.split(' ');
+          
+          async function getLatestBootLink(device) {
+            const url = `https://download.lineageos.org/devices/${device}/builds`;
+            const browser = await chromium.launch();
+            const page = await browser.newPage();
+            
+            await page.goto(url, { waitUntil: 'networkidle' });
+            await page.waitForSelector('a[href$="boot.img"]', { timeout: 30000 });
+            
+            const { fullLink, buildInfo } = await page.evaluate(() => {
+              const element = document.querySelector('a[href$="boot.img"]');
+              const href = element?.getAttribute('href') || '';
+              
+              // Extract build date from filename (format: lineage-22.2-20241201-nightly-device-boot.img)
+              const dateMatch = href.match(/lineage-[\d.]+-(\d{8})-/);
+              const buildDate = dateMatch ? dateMatch[1] : 'unknown';
+              
+              // Try to find version info from parent elements
+              const parentRow = element?.closest('tr') || element?.closest('div');
+              const versionText = parentRow?.textContent || '';
+              
+              const link = href.startsWith('/') 
+                ? 'https://mirrorbits.lineageos.org' + href 
+                : href;
+              
+              return {
+                fullLink: link,
+                buildInfo: {
+                  filename: href.split('/').pop(),
+                  buildDate: buildDate,
+                  extractedFrom: versionText.substring(0, 100)
+                }
+              };
+            });
+            
+            // Log build information
+            console.log(`\n=== ${device} Build Info ===`);
+            console.log(`Filename: ${buildInfo.filename}`);
+            console.log(`Build Date: ${buildInfo.buildDate}`);
+            console.log(`Full URL: ${fullLink}`);
+            console.log(`===========================\n`);
+            
+            await browser.close();
+            return fullLink;
+          }
+          
+          (async () => {
+            const envFilePath = process.env.GITHUB_ENV;
+            
+            for (const device of devices) {
+              const link = await getLatestBootLink(device);
+              
+              if (!link) {
+                console.error(`FATAL: Could not find boot.img link for ${device}`);
+                process.exit(1);
+              }
+              
+              fs.appendFileSync(envFilePath, `${device}_LATEST_BOOT=${link}\n`);
+              console.log(`✓ Successfully set ${device}_LATEST_BOOT`);
+            }
+          })();
+          EOF
+          node fetch_boot_links.js
+        env:
+          DEVICES: ${{ env.DEVICES }}
+
+      - name: Download, extract and process
+        run: |
+          # Download extraction script
+          wget -q https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-ikconfig
+          chmod +x extract-ikconfig
+          
+          # Prepare output directory
+          mkdir -p arch/arm64/configs/
+          rm -f arch/arm64/configs/pdx{234,237}_defconfig
+          
+          # Process each device
+          for DEVICE in $DEVICES; do
+            echo "Processing $DEVICE..."
+            
+            # Get URL from environment
+            URL_VAR="${DEVICE}_LATEST_BOOT"
+            BOOT_URL=${!URL_VAR}
+            
+            # Download boot image
+            wget -q -O "${DEVICE}_boot.img" "$BOOT_URL" || {
+              echo "Failed to download boot.img for $DEVICE"
+              exit 1
+            }
+            
+            # Extract kernel
+            dd if="${DEVICE}_boot.img" of="${DEVICE}_kernel" bs=4096 skip=1 2>/dev/null
+            
+            # Extract defconfig
+            ./extract-ikconfig "${DEVICE}_kernel" > "arch/arm64/configs/${DEVICE}_defconfig" 2>/dev/null || \
+              touch "arch/arm64/configs/${DEVICE}_defconfig"
+            
+            # Verify
+            if [ -s "arch/arm64/configs/${DEVICE}_defconfig" ]; then
+              echo "✓ $DEVICE defconfig extracted successfully"
+            else
+              echo "⚠ $DEVICE defconfig is empty (extraction may have failed)"
+            fi
+            
+            # Cleanup
+            rm -f "${DEVICE}_boot.img" "${DEVICE}_kernel"
+          done
+
+      - name: Upload defconfigs as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: defconfigs
+          path: arch/arm64/configs/pdx*_defconfig
+
+      - name: Commit and push changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          git add arch/arm64/configs/pdx{234,237}_defconfig
+          
+          git diff --cached --quiet && {
+            echo "No changes to defconfigs"
+          } || {
+            git commit -m "chore(defconfigs): Update latest defconfigs for pdx234 pdx237"
+            git push
+          }
