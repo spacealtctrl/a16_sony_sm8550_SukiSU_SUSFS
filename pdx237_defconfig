@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm64 5.15.197 Kernel Configuration
+# Linux/arm64 5.15.200 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="Android (14054515, +pgo, +bolt, +lto, +mlgo, based on r563880c) clang version 21.0.0 (https://android.googlesource.com/toolchain/llvm-project 5e96669f06077099aa41290cdb4c5e6fa0f59349)"
 CONFIG_GCC_VERSION=0
@@ -6889,6 +6889,7 @@ CONFIG_INTERCONNECT_QCOM_KALAMA=m
 # CONFIG_INTERCONNECT_QCOM_SA410M is not set
 # CONFIG_INTERCONNECT_QCOM_LEMANS is not set
 # CONFIG_INTERCONNECT_QCOM_MONACO_AUTO is not set
+# CONFIG_INTERCONNECT_QCOM_CAMSX is not set
 # CONFIG_COUNTER is not set
 # CONFIG_MOST is not set
 # end of Device Drivers
