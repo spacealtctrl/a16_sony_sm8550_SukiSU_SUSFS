@@ -149,16 +149,20 @@ jobs:
           name: defconfigs
           path: arch/arm64/configs/pdx*_defconfig
 
-      - name: Commit and push changes
+      - name: Replace defconfigs on main branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           
-          git add pdx{234,237}_defconfig
+          # Overwrite root defconfigs with extracted ones
+          cp arch/arm64/configs/pdx234_defconfig ./pdx234_defconfig
+          cp arch/arm64/configs/pdx237_defconfig ./pdx237_defconfig
           
-          git diff --cached --quiet && {
-            echo "No changes to defconfigs"
-          } || {
+          git add pdx234_defconfig pdx237_defconfig
+          
+          if ! git diff --cached --quiet; then
             git commit -m "chore(defconfigs): Update latest defconfigs for pdx234 pdx237"
-            git push
-          }
+            git push origin HEAD:main
+          else
+            echo "No changes to defconfigs, nothing to push"
+          fi
