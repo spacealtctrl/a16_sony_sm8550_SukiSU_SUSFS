@@ -3,8 +3,16 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      ksu_variant:
+        description: 'KernelSU Variant'
+        required: true
+        default: 'SukiSU'
+        type: choice
+        options:
+          - SukiSU
+          - ReSukiSU
       sukisu_branch:
-        description: 'SukiSU Branch'
+        description: 'SukiSU Branch (SukiSU variant only)'
         required: true
         default: 'Stable(标准)'
         type: choice
@@ -45,6 +53,8 @@ jobs:
     permissions: { contents: write }
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      BUILD_SLUG: ${{ github.event.inputs.ksu_variant == 'ReSukiSU' && 'resukisu' || github.event.inputs.sukisu_branch == 'Stable(标准)' && 'sukisu-stable' || 'sukisu-dev' }}
     strategy:
       matrix:
         device: [pdx234, pdx237]
@@ -118,11 +128,16 @@ jobs:
           echo "✓ Kernel environment cleaned" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
 
-      - name: Install base defconfig from stock boot.img
+      - name: Install base defconfig from extracted boot.img config
         working-directory: kernel
         run: |
           echo "--- Installing Base Defconfig ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          cp ../build-configs/lineage-23.2-stock.config arch/arm64/configs/${{ matrix.device }}_defconfig
+          STOCK_DEFCONFIG="../build-configs/${{ matrix.device }}_defconfig"
+          if [ ! -f "$STOCK_DEFCONFIG" ]; then
+            echo "✗ ERROR: Extracted defconfig not found: $STOCK_DEFCONFIG" | tee -a ../error-log-${{ matrix.device }}.txt
+            exit 1
+          fi
+          cp "$STOCK_DEFCONFIG" arch/arm64/configs/${{ matrix.device }}_defconfig
           echo "✓ Installed stock defconfig ($(wc -l < arch/arm64/configs/${{ matrix.device }}_defconfig) lines)" | tee -a ../error-log-${{ matrix.device }}.txt
           echo "" >> ../error-log-${{ matrix.device }}.txt
 
@@ -167,14 +182,21 @@ jobs:
           echo "--- Cloning Dependencies ---" | tee -a error-log-${{ matrix.device }}.txt
           echo "Cloning SukiSU and SUSFS dependencies in parallel..."
 
-          # Set SUSFS branch dynamically based on kernel version
           SUSFS_BRANCH="gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}"
           echo "Using SUSFS branch: $SUSFS_BRANCH" | tee -a error-log-${{ matrix.device }}.txt
 
-          git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
-          git clone --depth=1 https://github.com/WildPlusKernel/kernel_patches.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
+          if [ "${{ github.event.inputs.ksu_variant }}" == "SukiSU" ]; then
+            if ! git clone --depth=1 https://github.com/ShirkNeko/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt; then
+              echo "ShirkNeko susfs4ksu missing branch $SUSFS_BRANCH, falling back to simonpunk" | tee -a error-log-${{ matrix.device }}.txt
+              rm -rf susfs4ksu
+              git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt
+            fi
+          else
+            git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt
+          fi
 
-          # Remove depth from SukiSU clone to allow checkout of specific commit for KPM later
+          git clone --depth=1 https://github.com/WildKernels/kernel_patches.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
+
           git clone https://github.com/ShirkNeko/SukiSU_patch.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
 
           git clone --depth=1 https://github.com/zzh20188/GKI_KernelSU_SUSFS.git zzh_patches 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
@@ -228,20 +250,24 @@ jobs:
           fi
           echo "" >> ../error-log-${{ matrix.device }}.txt
 
-      - name: Add SukiSU
+      - name: Add KernelSU variant
         working-directory: kernel
         run: |
-          echo "--- Adding SukiSU ---" | tee -a ../error-log-${{ matrix.device }}.txt
-          echo "Adding SukiSU to kernel..." | tee -a ../error-log-${{ matrix.device }}.txt
+          echo "--- Adding ${{ github.event.inputs.ksu_variant }} ---" | tee -a ../error-log-${{ matrix.device }}.txt
 
-          # Both Stable and Dev now use builtin branch
-          echo "Using SukiSU builtin branch" | tee -a ../error-log-${{ matrix.device }}.txt
-          BRANCH="-s builtin"
-
-          if curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash $BRANCH 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
-            echo "✓ SukiSU setup completed" | tee -a ../error-log-${{ matrix.device }}.txt
+          if [ "${{ github.event.inputs.ksu_variant }}" == "ReSukiSU" ]; then
+            SETUP_URL="https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh"
+            BRANCH="-s main"
           else
-            echo "✗ ERROR: SukiSU setup failed!" | tee -a ../error-log-${{ matrix.device }}.txt
+            SETUP_URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh"
+            BRANCH="-s builtin"
+          fi
+          echo "Using setup: $SETUP_URL ($BRANCH)" | tee -a ../error-log-${{ matrix.device }}.txt
+
+          if curl -LSs "$SETUP_URL" | bash $BRANCH 2>&1 | tee -a ../error-log-${{ matrix.device }}.txt; then
+            echo "✓ ${{ github.event.inputs.ksu_variant }} setup completed" | tee -a ../error-log-${{ matrix.device }}.txt
+          else
+            echo "✗ ERROR: ${{ github.event.inputs.ksu_variant }} setup failed!" | tee -a ../error-log-${{ matrix.device }}.txt
             exit 1
           fi
 
@@ -564,6 +590,7 @@ jobs:
         run: |
           echo "=== Build Configuration Summary ===" | tee build-info-${{ matrix.device }}.txt
           echo "Device: ${{ matrix.device }}" | tee -a build-info-${{ matrix.device }}.txt
+          echo "KernelSU Variant: ${{ github.event.inputs.ksu_variant }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "SukiSU Branch: ${{ github.event.inputs.sukisu_branch }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "SUSFS Enabled: ${{ github.event.inputs.enable_susfs }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "KPM Enabled: ${{ github.event.inputs.enable_kpm }}" | tee -a build-info-${{ matrix.device }}.txt
@@ -618,18 +645,12 @@ jobs:
 
       - name: Package AnyKernel3
         run: |
-          git clone --depth=1 https://github.com/WildPlusKernel/AnyKernel3.git -b gki-2.0 AnyKernel3-${{ matrix.device }}
+          git clone --depth=1 https://github.com/WildKernels/AnyKernel3.git -b gki-2.0 AnyKernel3-${{ matrix.device }}
 
           cp kernel/out/arch/arm64/boot/Image AnyKernel3-${{ matrix.device }}/
 
-          if [ "${{ github.event.inputs.sukisu_branch }}" == "Stable(标准)" ]; then
-            BRANCH_SUFFIX="stable"
-          else
-            BRANCH_SUFFIX="dev"
-          fi
-
           cd AnyKernel3-${{ matrix.device }}
-          zip -r9 -q "../AnyKernel3-${{ matrix.device }}-sukisu-${BRANCH_SUFFIX}.zip" * -x .git .github README.md *placeholder
+          zip -r9 -q "../AnyKernel3-${{ matrix.device }}-${{ env.BUILD_SLUG }}.zip" * -x .git .github README.md *placeholder
           cd ..
 
       - name: Copy kernel Image for upload
@@ -639,9 +660,9 @@ jobs:
       - name: Upload files
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-${{ matrix.device }}-sukisu-${{ github.event.inputs.sukisu_branch == 'Stable(标准)' && 'stable' || 'dev' }}
+          name: kernel-${{ matrix.device }}-${{ env.BUILD_SLUG }}
           path: |
-            AnyKernel3-${{ matrix.device }}-sukisu-${{ github.event.inputs.sukisu_branch == 'Stable(标准)' && 'stable' || 'dev' }}.zip
+            AnyKernel3-${{ matrix.device }}-${{ env.BUILD_SLUG }}.zip
             Image-${{ matrix.device }}
             build-info-${{ matrix.device }}.txt
           overwrite: true
@@ -653,52 +674,77 @@ jobs:
     if: success()
     permissions:
       contents: write
+    env:
+      BUILD_SLUG: ${{ github.event.inputs.ksu_variant == 'ReSukiSU' && 'resukisu' || github.event.inputs.sukisu_branch == 'Stable(标准)' && 'sukisu-stable' || 'sukisu-dev' }}
     steps:
       - name: Download build artifacts for pdx234
         uses: actions/download-artifact@v4
         with:
-          name: kernel-pdx234-sukisu-${{ github.event.inputs.sukisu_branch == 'Stable(标准)' && 'stable' || 'dev' }}
+          name: kernel-pdx234-${{ env.BUILD_SLUG }}
           path: artifacts/pdx234
 
       - name: Download build artifacts for pdx237
         uses: actions/download-artifact@v4
         with:
-          name: kernel-pdx237-sukisu-${{ github.event.inputs.sukisu_branch == 'Stable(标准)' && 'stable' || 'dev' }}
+          name: kernel-pdx237-${{ env.BUILD_SLUG }}
           path: artifacts/pdx237
 
       - name: Prepare release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p release-assets
 
-          # Copy pdx234 files
           cp artifacts/pdx234/Image-pdx234 release-assets/Image-pdx234
           cp artifacts/pdx234/build-info-pdx234.txt release-assets/build-info-pdx234.txt
-          cp artifacts/pdx234/AnyKernel3-pdx234-sukisu-*.zip release-assets/
+          cp artifacts/pdx234/AnyKernel3-pdx234-*.zip release-assets/
 
-          # Copy pdx237 files
           cp artifacts/pdx237/Image-pdx237 release-assets/Image-pdx237
           cp artifacts/pdx237/build-info-pdx237.txt release-assets/build-info-pdx237.txt
-          cp artifacts/pdx237/AnyKernel3-pdx237-sukisu-*.zip release-assets/
+          cp artifacts/pdx237/AnyKernel3-pdx237-*.zip release-assets/
 
-          # Auto-fetch latest APK based on branch
-          if [ "${{ github.event.inputs.sukisu_branch }}" == "Dev(开发)" ]; then
-            echo "Fetching latest dev/pre-release APK..."
-            LATEST_APK=$(curl -s https://api.github.com/repos/SukiSU-Ultra/SukiSU-Ultra/releases | \
-                          jq -r '.[] | select(.prerelease==true) | .assets[].browser_download_url | select(contains(".apk"))' | \
-                          head -1)
+          if [ "${{ github.event.inputs.ksu_variant }}" == "ReSukiSU" ]; then
+            echo "Fetching latest ReSukiSU manager from build-manager.yml artifacts..."
+            RUN_ID=$(gh api "repos/ReSukiSU/ReSukiSU/actions/workflows/build-manager.yml/runs?status=success&per_page=1" -q '.workflow_runs[0].id' 2>/dev/null || echo "")
+            if [ -n "$RUN_ID" ]; then
+              NAMES=$(gh api "repos/ReSukiSU/ReSukiSU/actions/runs/$RUN_ID/artifacts" -q '.artifacts[].name' 2>/dev/null || echo "")
+              ART=$(printf '%s\n' "$NAMES" | grep -i "^Manager-release$" | head -1 || true)
+              [ -z "$ART" ] && ART=$(printf '%s\n' "$NAMES" | grep -iE "manager.*release" | grep -viE "spoofed|mapping" | head -1 || true)
+              if [ -n "$ART" ]; then
+                gh run download "$RUN_ID" -R ReSukiSU/ReSukiSU -n "$ART" -D resukisu-manager 2>/dev/null || true
+                APK_PATH=$(find resukisu-manager -name "*.apk" 2>/dev/null | head -1 || true)
+                if [ -n "$APK_PATH" ]; then
+                  cp "$APK_PATH" "release-assets/$(basename "$APK_PATH")"
+                  echo "Downloaded ReSukiSU manager: $(basename "$APK_PATH")"
+                else
+                  echo "WARNING: ReSukiSU manager artifact had no APK, skipping"
+                fi
+              else
+                echo "WARNING: No ReSukiSU manager artifact found, skipping"
+              fi
+            else
+              echo "WARNING: No successful ReSukiSU build-manager run found, skipping"
+            fi
           else
-            echo "Fetching latest stable APK..."
-            LATEST_APK=$(curl -s https://api.github.com/repos/SukiSU-Ultra/SukiSU-Ultra/releases | \
-                          jq -r '.[] | select(.prerelease==false) | .assets[].browser_download_url | select(contains(".apk"))' | \
-                          head -1)
-          fi
+            if [ "${{ github.event.inputs.sukisu_branch }}" == "Dev(开发)" ]; then
+              echo "Fetching latest dev/pre-release APK..."
+              LATEST_APK=$(curl -s https://api.github.com/repos/SukiSU-Ultra/SukiSU-Ultra/releases | \
+                            jq -r '.[] | select(.prerelease==true) | .assets[].browser_download_url | select(contains(".apk"))' | \
+                            head -1)
+            else
+              echo "Fetching latest stable APK..."
+              LATEST_APK=$(curl -s https://api.github.com/repos/SukiSU-Ultra/SukiSU-Ultra/releases | \
+                            jq -r '.[] | select(.prerelease==false) | .assets[].browser_download_url | select(contains(".apk"))' | \
+                            head -1)
+            fi
 
-          if [ -n "$LATEST_APK" ]; then
-            APK_NAME=$(basename "$LATEST_APK")
-            curl -L "$LATEST_APK" -o "release-assets/$APK_NAME"
-            echo "Downloaded APK: $APK_NAME"
-          else
-            echo "WARNING: No APK found, skipping"
+            if [ -n "$LATEST_APK" ]; then
+              APK_NAME=$(basename "$LATEST_APK")
+              curl -L "$LATEST_APK" -o "release-assets/$APK_NAME"
+              echo "Downloaded APK: $APK_NAME"
+            else
+              echo "WARNING: No APK found, skipping"
+            fi
           fi
 
           cd release-assets
@@ -711,8 +757,7 @@ jobs:
           TAG="multi-device-${{ github.event.inputs.release_version }}"
           echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
 
-          # Extract SUSFS version from build log (pdx234)
-          SUSFS_VERSION="v1.5.12"
+          SUSFS_VERSION="v2.1.0"
           if [ -f "artifacts/pdx234/build-info-pdx234.txt" ]; then
             EXTRACTED=$(grep -oP "SUSFS_VERSION: \Kv[0-9]+\.[0-9]+\.[0-9]+" artifacts/pdx234/build-info-pdx234.txt | head -1 || echo "")
             if [ -n "$EXTRACTED" ]; then
@@ -720,22 +765,29 @@ jobs:
             fi
           fi
 
-          # Create release name
-          RELEASE_NAME="pdx234 & pdx237 Kernel: SukiSU & SUSFS ${SUSFS_VERSION}"
+          VARIANT="${{ github.event.inputs.ksu_variant }}"
+          if [ "$VARIANT" == "ReSukiSU" ]; then
+            VARIANT_FEATURE="ReSukiSU (main)"
+            MANAGER_REPO="https://github.com/ReSukiSU/ReSukiSU"
+          else
+            VARIANT_FEATURE="SukiSU-${{ github.event.inputs.sukisu_branch }} (builtin)"
+            MANAGER_REPO="https://github.com/SukiSU-Ultra/SukiSU-Ultra"
+          fi
+
+          RELEASE_NAME="pdx234 & pdx237 Kernel: ${VARIANT} & SUSFS ${SUSFS_VERSION}"
           echo "RELEASE_NAME<<EOF" >> $GITHUB_ENV
           echo "$RELEASE_NAME" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
-          # Create release notes
           cat > release-notes.md << EOF
-          This release includes **SukiSU** for Sony Xperia devices on LineageOS 23.2 / crDroid 12.7
+          This release includes **${VARIANT}** for Sony Xperia devices on LineageOS 23.2 / crDroid 12.7
 
           ## Supported Devices:
           - **pdx234** - Sony Xperia 1 V
           - **pdx237** - Sony Xperia 5 V
 
           Features:
-          -> SukiSU-${{ github.event.inputs.sukisu_branch }} (builtin)
+          -> ${VARIANT_FEATURE}
           -> SUSFS ඞ ${SUSFS_VERSION}
           -> Inline Hook
           -> Baseband-guard Support
@@ -755,14 +807,14 @@ jobs:
           </details>
 
           ## Downloads:
-          - **pdx234 (Xperia 1 V)**: AnyKernel3-pdx234-sukisu-*.zip
-          - **pdx237 (Xperia 5 V)**: AnyKernel3-pdx237-sukisu-*.zip
+          - **pdx234 (Xperia 1 V)**: AnyKernel3-pdx234-*.zip
+          - **pdx237 (Xperia 5 V)**: AnyKernel3-pdx237-*.zip
 
           Modules:
           -> https://github.com/sidex15/ksu_module_susfs
 
-          SukiSU Manager:
-          -> https://github.com/SukiSU-Ultra/SukiSU-Ultra
+          Manager:
+          -> ${MANAGER_REPO}
 
           LZ4 1.10.0: Upgrade from [zzh20188/GKI_KernelSU_SUSFS](https://github.com/zzh20188/GKI_KernelSU_SUSFS)
 
@@ -770,7 +822,7 @@ jobs:
           <summary>▸ Commit Information</summary>
 
           Build compiled with:
-          - **SukiSU Branch**: builtin
+          - **KernelSU Variant**: ${VARIANT}
           - **Devices**: Sony Xperia 1 V (pdx234), Sony Xperia 5 V (pdx237)
           - **Base Kernel**: 5.15
           - **Android Version**: 16 (LineageOS 23.2 - crDroid 12.7)
