@@ -695,41 +695,31 @@ jobs:
           cp artifacts/pdx237/AnyKernel3-pdx237-*.zip release-assets/
 
           if [ "${{ github.event.inputs.ksu_variant }}" == "ReSukiSU" ]; then
-            echo "Fetching latest ReSukiSU manager from build-manager.yml artifacts..."
-            RUN_ID=$(gh api "repos/ReSukiSU/ReSukiSU/actions/workflows/build-manager.yml/runs?status=success&per_page=1" -q '.workflow_runs[0].id' 2>/dev/null || echo "")
-            if [ -n "$RUN_ID" ]; then
-              NAMES=$(gh api "repos/ReSukiSU/ReSukiSU/actions/runs/$RUN_ID/artifacts" -q '.artifacts[].name' 2>/dev/null || echo "")
-              ART=$(printf '%s\n' "$NAMES" | grep -i "^Manager-release$" | head -1 || true)
-              [ -z "$ART" ] && ART=$(printf '%s\n' "$NAMES" | grep -iE "manager.*release" | grep -viE "spoofed|mapping" | head -1 || true)
-              if [ -n "$ART" ]; then
-                gh run download "$RUN_ID" -R ReSukiSU/ReSukiSU -n "$ART" -D resukisu-manager 2>/dev/null || true
-                APK_PATH=$(find resukisu-manager -name "*.apk" 2>/dev/null | head -1 || true)
-                if [ -n "$APK_PATH" ]; then
-                  cp "$APK_PATH" "release-assets/$(basename "$APK_PATH")"
-                  echo "Downloaded ReSukiSU manager: $(basename "$APK_PATH")"
-                else
-                  echo "WARNING: ReSukiSU manager artifact had no APK, skipping"
-                fi
-              else
-                echo "WARNING: No ReSukiSU manager artifact found, skipping"
-              fi
-            else
-              echo "WARNING: No successful ReSukiSU build-manager run found, skipping"
-            fi
+            MGR_REPO="ReSukiSU/ReSukiSU"
+            MGR_ARTIFACT="Manager-release"
           else
-            echo "Fetching latest stable SukiSU APK..."
-            LATEST_APK=$(curl -s https://api.github.com/repos/SukiSU-Ultra/SukiSU-Ultra/releases | \
-                          jq -r '.[] | select(.prerelease==false) | .assets[].browser_download_url | select(contains(".apk"))' | \
-                          head -1)
-
-            if [ -n "$LATEST_APK" ]; then
-              APK_NAME=$(basename "$LATEST_APK")
-              curl -L "$LATEST_APK" -o "release-assets/$APK_NAME"
-              echo "Downloaded APK: $APK_NAME"
-            else
-              echo "WARNING: No APK found, skipping"
-            fi
+            MGR_REPO="SukiSU-Ultra/SukiSU-Ultra"
+            MGR_ARTIFACT="manager"
           fi
+          echo "Fetching '$MGR_ARTIFACT' from $MGR_REPO build-manager.yml artifacts (latest build, matches compiled kernel)..."
+
+          MGR_FOUND=""
+          RUN_IDS=$(gh api "repos/$MGR_REPO/actions/workflows/build-manager.yml/runs?status=success&per_page=10" -q '.workflow_runs[].id' 2>/dev/null || echo "")
+          for RUN_ID in $RUN_IDS; do
+            HAS_ART=$(gh api "repos/$MGR_REPO/actions/runs/$RUN_ID/artifacts" -q ".artifacts[] | select(.name==\"$MGR_ARTIFACT\") | .name" 2>/dev/null | head -1 || true)
+            [ -z "$HAS_ART" ] && continue
+            rm -rf manager-dl
+            if gh run download "$RUN_ID" -R "$MGR_REPO" -n "$MGR_ARTIFACT" -D manager-dl 2>/dev/null; then
+              APK_PATH=$(find manager-dl -name "*.apk" 2>/dev/null | head -1 || true)
+              if [ -n "$APK_PATH" ]; then
+                cp "$APK_PATH" "release-assets/$(basename "$APK_PATH")"
+                echo "Manager (run $RUN_ID): $(basename "$APK_PATH")"
+                MGR_FOUND=1
+                break
+              fi
+            fi
+          done
+          [ -z "$MGR_FOUND" ] && echo "WARNING: manager APK not found in recent $MGR_REPO build-manager runs, skipping"
 
           cd release-assets
           sha256sum * > SHA256SUMS.txt
