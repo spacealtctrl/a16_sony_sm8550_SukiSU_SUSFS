@@ -11,14 +11,6 @@ on:
         options:
           - SukiSU
           - ReSukiSU
-      sukisu_branch:
-        description: 'SukiSU Branch (SukiSU variant only)'
-        required: true
-        default: 'Stable(标准)'
-        type: choice
-        options:
-          - Stable(标准)
-          - Dev(开发)
       enable_susfs:
         description: 'Enable SUSFS'
         required: true
@@ -54,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      BUILD_SLUG: ${{ github.event.inputs.ksu_variant == 'ReSukiSU' && 'resukisu' || github.event.inputs.sukisu_branch == 'Stable(标准)' && 'sukisu-stable' || 'sukisu-dev' }}
+      BUILD_SLUG: ${{ github.event.inputs.ksu_variant == 'ReSukiSU' && 'resukisu' || 'sukisu' }}
     strategy:
       matrix:
         device: [pdx234, pdx237]
@@ -591,7 +583,6 @@ jobs:
           echo "=== Build Configuration Summary ===" | tee build-info-${{ matrix.device }}.txt
           echo "Device: ${{ matrix.device }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "KernelSU Variant: ${{ github.event.inputs.ksu_variant }}" | tee -a build-info-${{ matrix.device }}.txt
-          echo "SukiSU Branch: ${{ github.event.inputs.sukisu_branch }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "SUSFS Enabled: ${{ github.event.inputs.enable_susfs }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "KPM Enabled: ${{ github.event.inputs.enable_kpm }}" | tee -a build-info-${{ matrix.device }}.txt
           echo "ZRAM/LZ4KD Enabled: ${{ github.event.inputs.enable_zram }}" | tee -a build-info-${{ matrix.device }}.txt
@@ -675,7 +666,7 @@ jobs:
     permissions:
       contents: write
     env:
-      BUILD_SLUG: ${{ github.event.inputs.ksu_variant == 'ReSukiSU' && 'resukisu' || github.event.inputs.sukisu_branch == 'Stable(标准)' && 'sukisu-stable' || 'sukisu-dev' }}
+      BUILD_SLUG: ${{ github.event.inputs.ksu_variant == 'ReSukiSU' && 'resukisu' || 'sukisu' }}
     steps:
       - name: Download build artifacts for pdx234
         uses: actions/download-artifact@v4
@@ -726,17 +717,10 @@ jobs:
               echo "WARNING: No successful ReSukiSU build-manager run found, skipping"
             fi
           else
-            if [ "${{ github.event.inputs.sukisu_branch }}" == "Dev(开发)" ]; then
-              echo "Fetching latest dev/pre-release APK..."
-              LATEST_APK=$(curl -s https://api.github.com/repos/SukiSU-Ultra/SukiSU-Ultra/releases | \
-                            jq -r '.[] | select(.prerelease==true) | .assets[].browser_download_url | select(contains(".apk"))' | \
-                            head -1)
-            else
-              echo "Fetching latest stable APK..."
-              LATEST_APK=$(curl -s https://api.github.com/repos/SukiSU-Ultra/SukiSU-Ultra/releases | \
-                            jq -r '.[] | select(.prerelease==false) | .assets[].browser_download_url | select(contains(".apk"))' | \
-                            head -1)
-            fi
+            echo "Fetching latest stable SukiSU APK..."
+            LATEST_APK=$(curl -s https://api.github.com/repos/SukiSU-Ultra/SukiSU-Ultra/releases | \
+                          jq -r '.[] | select(.prerelease==false) | .assets[].browser_download_url | select(contains(".apk"))' | \
+                          head -1)
 
             if [ -n "$LATEST_APK" ]; then
               APK_NAME=$(basename "$LATEST_APK")
@@ -770,7 +754,7 @@ jobs:
             VARIANT_FEATURE="ReSukiSU (main)"
             MANAGER_REPO="https://github.com/ReSukiSU/ReSukiSU"
           else
-            VARIANT_FEATURE="SukiSU-${{ github.event.inputs.sukisu_branch }} (builtin)"
+            VARIANT_FEATURE="SukiSU (builtin)"
             MANAGER_REPO="https://github.com/SukiSU-Ultra/SukiSU-Ultra"
           fi
 
@@ -850,12 +834,10 @@ jobs:
             --title "${{ env.RELEASE_NAME }}" \
             --notes-file release-notes.md \
             --target "${{ github.sha }}" \
-            ${{ github.event.inputs.sukisu_branch == 'Dev(开发)' && '--prerelease' || '' }} \
             release-assets/*
 
       - name: Output release URL
         run: |
           echo "Release created successfully!"
           echo "URL: https://github.com/${{ github.repository }}/releases/tag/${{ env.RELEASE_TAG }}"
-          echo "Release type: ${{ github.event.inputs.sukisu_branch == 'Dev(开发)' && 'Pre-release' || 'Latest release' }}"
           echo "Devices included: pdx234 (Xperia 1 V), pdx237 (Xperia 5 V)"
