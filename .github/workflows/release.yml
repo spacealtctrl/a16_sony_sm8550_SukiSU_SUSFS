@@ -38,6 +38,7 @@ env:
   KERNEL_LOCALVERSION: spacealtctrl-sukisu
   ANDROID_VERSION: android13
   KERNEL_VERSION: 5.15
+  SUSFS_RESUKISU_PIN: e4bd49f708108cc829fe7ca079312ea8fefa89f8
 
 jobs:
   build:
@@ -184,7 +185,9 @@ jobs:
               git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt
             fi
           else
-            git clone --depth=1 https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt
+            git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH" 2>&1 | tee -a error-log-${{ matrix.device }}.txt
+            git -C susfs4ksu checkout "${{ env.SUSFS_RESUKISU_PIN }}" 2>&1 | tee -a error-log-${{ matrix.device }}.txt
+            echo "Pinned SUSFS to ${{ env.SUSFS_RESUKISU_PIN }} (last commit before fake_status sync; ReSukiSU main lacks that glue)" | tee -a error-log-${{ matrix.device }}.txt
           fi
 
           git clone --depth=1 https://github.com/WildKernels/kernel_patches.git 2>&1 | tee -a error-log-${{ matrix.device }}.txt &
