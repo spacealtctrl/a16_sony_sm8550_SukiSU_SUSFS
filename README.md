@@ -1,14 +1,14 @@
-# LineageOS 23.0 Custom Kernel - SukiSU Ultra for the Sony Xperia 1 V & Sony Xperia 5 V
+# LineageOS 23.2 Custom Kernel - SukiSU Ultra for the Sony Xperia 1 V & Sony Xperia 5 V
 <img src="https://github.com/spacealtctrl/sm8550_SukiSU_SUSFS/blob/main/assets/sonysuki.png" alt="SukiSU Ultra" width="100" height="150"/>
 
 ## Requirements
-- **ROM**: LineageOS 23.0 (Android 16)
+- **ROM**: LineageOS 23.2 / crDroid 12.11 (Android 16)
 - **Device**: Sony Xperia 1 V (pdx234) / Sony Xperia 5 V (pdx237)
 - **Recovery**: [TWRP](https://xdaforums.com/t/recovery-unofficial-updated-teamwin-recovery-project-3-7-1-for-xperia-1v-03-20-2024.4662645/)
 
 ## Features
 - **SukiSU Ultra**
-- **SUSFS (ඞ) 2.0.0**
+- **SUSFS (ඞ) 2.1.0**
 - **[Baseband-guard](https://github.com/vc-teahouse/Baseband-guard)**
 - **KPM**
 - **BBR TCP**
@@ -16,7 +16,7 @@
 - **LZ4 1.10.0** - Upgraded
 
 ## Installation
-1. Ensure you're running **LineageOS 23.2 / crDroid 12.7**
+1. Ensure you're running **LineageOS 23.2 / crDroid 12.11**
 2. Download the latest release from [Releases](../../releases)
 3. Boot into custom recovery ([TWRP](https://xdaforums.com/t/recovery-unofficial-updated-teamwin-recovery-project-3-7-1-for-xperia-1v-03-20-2024.4662645/))
 4. Flash the AnyKernel3 zip

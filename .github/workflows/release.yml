@@ -39,6 +39,7 @@ env:
   ANDROID_VERSION: android13
   KERNEL_VERSION: 5.15
   SUSFS_RESUKISU_PIN: e4bd49f708108cc829fe7ca079312ea8fefa89f8
+  RESUKISU_PIN: a13d71f699093f0c1da7ba442881eccaa8e4321a
 
 jobs:
   build:
@@ -252,7 +253,7 @@ jobs:
 
           if [ "${{ github.event.inputs.ksu_variant }}" == "ReSukiSU" ]; then
             SETUP_URL="https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/main/kernel/setup.sh"
-            BRANCH="-s main"
+            BRANCH="-s ${{ env.RESUKISU_PIN }}"
           else
             SETUP_URL="https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh"
             BRANCH="-s builtin"
@@ -744,7 +745,7 @@ jobs:
 
           VARIANT="${{ github.event.inputs.ksu_variant }}"
           if [ "$VARIANT" == "ReSukiSU" ]; then
-            VARIANT_FEATURE="ReSukiSU (main)"
+            VARIANT_FEATURE="ReSukiSU (pinned ${RESUKISU_PIN:0:7} - last build with KPM)"
             MANAGER_REPO="https://github.com/ReSukiSU/ReSukiSU"
           else
             VARIANT_FEATURE="SukiSU (builtin)"
