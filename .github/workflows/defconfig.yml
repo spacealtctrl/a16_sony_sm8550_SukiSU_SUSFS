@@ -105,8 +105,9 @@ jobs:
 
       - name: Download, extract and process
         run: |
-          # Download extraction script
-          wget -q https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-ikconfig
+          # Use vendored extraction script (raw.githubusercontent.com/torvalds/linux
+          # is heavily rate-limited and intermittently returns HTTP 429)
+          cp .github/scripts/extract-ikconfig .
           chmod +x extract-ikconfig
           
           # Prepare output directory
